@@ -1,0 +1,46 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches:
+      - seytu-prod
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/itsnotismail/chatwoot:latest
+            ghcr.io/itsnotismail/chatwoot:${{ github.sha }}
+          build-args: |
+            SECRET_KEY_BASE=dummy_for_build
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USER }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          script: |
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            cd /srv/seytu/chat
+            docker compose pull rails sidekiq
+            docker compose up -d --force-recreate rails sidekiq
+            docker image prune -f
