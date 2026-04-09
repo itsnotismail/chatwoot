@@ -30,7 +30,7 @@ jobs:
             ghcr.io/itsnotismail/chatwoot:latest
             ghcr.io/itsnotismail/chatwoot:${{ github.sha }}
           build-args: |
-            SECRET_KEY_BASE=dummy_for_build
+            SECRET_KEY_BASE=dummy_for_building
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v1
