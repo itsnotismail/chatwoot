@@ -15,7 +15,7 @@
 
 # ------- Branding Related Config ------- #
 - name: INSTALLATION_NAME
-  value: 'Seytu'
+  value: 'Comvor'
   display_title: 'Installation Name'
   description: 'The installation wide name that would be used in the dashboard, title etc.'
 - name: LOGO_THUMBNAIL
@@ -31,29 +31,29 @@
   display_title: 'Logo Dark Mode'
   description: 'The logo that would be used on the dashboard, login page etc. for dark mode'
 - name: BRAND_URL
-  value: 'https://seytu.mv'
+  value: 'https://comvor.com'
   display_title: 'Brand URL'
   description: 'The URL that would be used in emails under the section “Powered By”'
 - name: WIDGET_BRAND_URL
-  value: 'https://seytu.mv'
+  value: 'https://comvor.com'
   display_title: 'Widget Brand URL'
   description: 'The URL that would be used in the widget under the section “Powered By”'
 - name: BRAND_NAME
-  value: 'Seytu'
+  value: 'Comvor'
   display_title: 'Brand Name'
   description: 'The name that would be used in emails and the widget'
 - name: TERMS_URL
-  value: 'https://seytu.mv/terms'
+  value: 'https://comvor.com/terms'
   display_title: 'Terms URL'
   description: 'The terms of service URL displayed in Signup Page'
 - name: PRIVACY_URL
-  value: 'https://seytu.mv/privacy'
+  value: 'https://comvor.com/privacy'
   display_title: 'Privacy URL'
   description: 'The privacy policy URL displayed in the app'
 - name: DISPLAY_MANIFEST
   value: true
-  display_title: 'Seytu Metadata'
-  description: 'Display default Seytu metadata like favicons and upgrade warnings'
+  display_title: 'Comvor Metadata'
+  description: 'Display default Comvor metadata like favicons and upgrade warnings'
   type: boolean
 # ------- End of Branding Related Config ------- #
 
