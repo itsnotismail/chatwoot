@@ -13,7 +13,7 @@ const store = useStore();
 const route = useRoute();
 
 const accountId = route.params.accountId;
-const engineURL = window.chatwootConfig?.COMVOR_ENGINE_URL || '';
+const engineURL = window.globalConfig?.COMVOR_ENGINE_URL || '';
 
 const isLoading = ref(false);
 const isSaving = ref(false);
