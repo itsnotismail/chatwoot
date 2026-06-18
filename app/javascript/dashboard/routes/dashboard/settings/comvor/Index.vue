@@ -25,8 +25,6 @@ const form = ref({
   operating_hours: '',
   timezone: '',
   currency: '',
-  locale: '',
-  token_budget_per_thread: 4000,
 });
 
 function authHeaders() {
@@ -53,8 +51,6 @@ async function fetchSettings() {
       operating_hours: data.operating_hours || '',
       timezone: data.timezone || '',
       currency: data.currency || '',
-      locale: data.locale || '',
-      token_budget_per_thread: data.token_budget_per_thread || 4000,
     };
   } catch (e) {
     useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
@@ -151,7 +147,7 @@ onMounted(fetchSettings);
             />
           </label>
 
-          <div class="grid grid-cols-3 gap-4">
+          <div class="grid grid-cols-2 gap-4">
             <label class="flex flex-col gap-1">
               <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.TIMEZONE.LABEL') }}</span>
               <input
@@ -170,27 +166,7 @@ onMounted(fetchSettings);
                 :placeholder="t('COMVOR_SETTINGS.FIELDS.CURRENCY.PLACEHOLDER')"
               />
             </label>
-            <label class="flex flex-col gap-1">
-              <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.LOCALE.LABEL') }}</span>
-              <input
-                v-model="form.locale"
-                type="text"
-                class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-                :placeholder="t('COMVOR_SETTINGS.FIELDS.LOCALE.PLACEHOLDER')"
-              />
-            </label>
           </div>
-
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.TOKEN_BUDGET.LABEL') }}</span>
-            <input
-              v-model.number="form.token_budget_per_thread"
-              type="number"
-              min="1000"
-              class="w-48 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-            />
-            <span class="text-xs text-n-slate-11">{{ t('COMVOR_SETTINGS.FIELDS.TOKEN_BUDGET.HINT') }}</span>
-          </label>
         </div>
       </SectionLayout>
 
