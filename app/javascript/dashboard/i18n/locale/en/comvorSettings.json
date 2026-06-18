@@ -1,0 +1,56 @@
+{
+  "COMVOR_SETTINGS": {
+    "TITLE": "Comvor AI",
+    "DESCRIPTION": "Configure your AI assistant's identity, knowledge, and behaviour.",
+    "LOADING": "Loading settings...",
+    "SAVE": "Save Settings",
+    "SAVING": "Saving...",
+    "SAVE_SUCCESS": "Settings saved successfully.",
+    "SAVE_ERROR": "Failed to save settings. Please try again.",
+    "FETCH_ERROR": "Failed to load settings. Please refresh the page.",
+    "SECTION": {
+      "BUSINESS": {
+        "TITLE": "Business Identity",
+        "DESCRIPTION": "Tell the AI about your business so it can answer customer questions accurately."
+      },
+      "OPERATIONS": {
+        "TITLE": "Operations",
+        "DESCRIPTION": "Set operating hours, timezone, and regional preferences."
+      }
+    },
+    "FIELDS": {
+      "BUSINESS_DESCRIPTION": {
+        "LABEL": "Business Description",
+        "PLACEHOLDER": "Describe what your business does, your products or services, and who your customers are."
+      },
+      "BRAND_VOICE": {
+        "LABEL": "Brand Voice",
+        "PLACEHOLDER": "Describe how the AI should communicate. E.g. friendly and casual, professional and concise."
+      },
+      "FAQ_TEXT": {
+        "LABEL": "FAQ / Knowledge Base",
+        "PLACEHOLDER": "Add frequently asked questions and their answers. The AI will use this to respond to customers."
+      },
+      "OPERATING_HOURS": {
+        "LABEL": "Operating Hours",
+        "PLACEHOLDER": "E.g. Mon–Fri 9am–6pm GMT"
+      },
+      "TIMEZONE": {
+        "LABEL": "Timezone",
+        "PLACEHOLDER": "E.g. UTC, Asia/Dubai"
+      },
+      "CURRENCY": {
+        "LABEL": "Currency",
+        "PLACEHOLDER": "E.g. USD, AED"
+      },
+      "LOCALE": {
+        "LABEL": "Locale",
+        "PLACEHOLDER": "E.g. en, ar"
+      },
+      "TOKEN_BUDGET": {
+        "LABEL": "Token Budget Per Thread",
+        "HINT": "Minimum 1000. Controls how much context the AI processes per conversation."
+      }
+    }
+  }
+}
