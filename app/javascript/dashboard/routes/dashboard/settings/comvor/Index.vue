@@ -38,6 +38,14 @@ const AVOID_CHIPS = [
   { key: 'COMPETITOR',     label: t('COMVOR_SETTINGS.INSTRUCTIONS.AVOID_TOPICS.CHIPS.COMPETITOR') },
 ];
 
+const POLICY_LIMITS = {
+  purchasing_info: 800,
+  payment_methods: 400,
+  shipping_delivery: 800,
+  promotions: 1000,
+  returns_exchanges: 1000,
+};
+
 const form = ref({
   agent_name: '',
   brand_voice: 'warm_friendly',
@@ -297,7 +305,7 @@ onMounted(fetchSettings);
             </label>
             <label class="flex flex-col gap-1">
               <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.CURRENCY.LABEL') }}</span>
-              <input v-model="form.currency" type="text"
+              <input v-model="form.currency" type="text" maxlength="10"
                 class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
                 :placeholder="t('COMVOR_SETTINGS.FIELDS.CURRENCY.PLACEHOLDER')" />
             </label>
@@ -319,6 +327,7 @@ onMounted(fetchSettings);
             <textarea
               v-model="form.policies[key]"
               rows="3"
+              :maxlength="POLICY_LIMITS[key]"
               class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
               :placeholder="t(`COMVOR_SETTINGS.FIELDS.POLICIES.${key.toUpperCase()}.PLACEHOLDER`)"
             />
@@ -350,7 +359,7 @@ onMounted(fetchSettings);
 
           <div
             v-for="(card, index) in knowledgeCards"
-            :key="index"
+            :key="card.id || index"
             class="rounded-lg border border-n-weak bg-n-surface-1 p-4 flex flex-col gap-2"
           >
             <div class="flex items-center gap-2">
@@ -382,7 +391,7 @@ onMounted(fetchSettings);
               class="text-sm text-n-brand hover:underline"
               @click="addCard"
             >+ {{ t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.ADD_BUTTON') }}</button>
-            <span v-else class="text-xs text-n-slate-11">Maximum 20 cards reached</span>
+            <span v-else class="text-xs text-n-slate-11">{{ t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.MAX_CARDS_REACHED') }}</span>
 
             <button
               class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"

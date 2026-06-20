@@ -99,7 +99,8 @@
         "CONTENT_PLACEHOLDER": "Describe this topic in detail...",
         "EMPTY_STATE": "No knowledge cards yet. Add one to give your AI more to work with.",
         "SAVE_CARDS": "Save Cards",
-        "SAVING_CARDS": "Saving..."
+        "SAVING_CARDS": "Saving...",
+        "MAX_CARDS_REACHED": "Maximum 20 cards reached"
       },
       "TIMEZONE": {
         "LABEL": "Timezone",
