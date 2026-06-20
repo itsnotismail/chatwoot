@@ -1,7 +1,7 @@
 {
   "COMVOR_SETTINGS": {
     "TITLE": "Comvor AI",
-    "DESCRIPTION": "Configure your AI assistant's identity, knowledge, and behaviour.",
+    "DESCRIPTION": "Configure your AI assistant's knowledge, identity, and behaviour.",
     "LOADING": "Loading settings...",
     "SAVE": "Save Settings",
     "SAVING": "Saving...",
@@ -9,31 +9,97 @@
     "SAVE_ERROR": "Failed to save settings. Please try again.",
     "FETCH_ERROR": "Failed to load settings. Please refresh the page.",
     "SECTION": {
-      "BUSINESS": {
-        "TITLE": "Business Identity",
-        "DESCRIPTION": "Tell the AI about your business so it can answer customer questions accurately."
+      "IDENTITY": {
+        "TITLE": "Agent Identity",
+        "DESCRIPTION": "Set your AI assistant's name and communication style."
       },
-      "OPERATIONS": {
-        "TITLE": "Operations",
-        "DESCRIPTION": "Set operating hours, timezone, and regional preferences."
+      "BUSINESS": {
+        "TITLE": "Business Info",
+        "DESCRIPTION": "Structured details customers often ask about — location, hours, how to reach you."
+      },
+      "POLICIES": {
+        "TITLE": "Policies",
+        "DESCRIPTION": "Set your purchasing, payment, shipping, and return policies. Leave blank what doesn't apply."
+      },
+      "KNOWLEDGE": {
+        "TITLE": "Knowledge Cards",
+        "DESCRIPTION": "Add specific topics your AI should know about — warranties, age guides, gift options, etc."
+      },
+      "INSTRUCTIONS": {
+        "TITLE": "Instructions",
+        "DESCRIPTION": "Give your AI goals and rules for how to handle customer conversations."
       }
     },
     "FIELDS": {
+      "AGENT_NAME": {
+        "LABEL": "Agent Name",
+        "PLACEHOLDER": "E.g. Maya, Zara, Alex",
+        "HINT": "The name your AI assistant uses when talking to customers."
+      },
+      "TONE": {
+        "LABEL": "Tone",
+        "HINT": "How the AI communicates with customers.",
+        "OPTIONS": {
+          "WARM_FRIENDLY": "Warm & Friendly",
+          "PLAYFUL": "Fun & Playful",
+          "PROFESSIONAL": "Professional",
+          "CONCISE": "Direct & Brief"
+        }
+      },
       "BUSINESS_DESCRIPTION": {
         "LABEL": "Business Description",
-        "PLACEHOLDER": "Describe what your business does, your products or services, and who your customers are."
+        "PLACEHOLDER": "Briefly describe what your business does, your products, and who your customers are.",
+        "HINT": "Keep it short — 1–3 sentences."
       },
-      "BRAND_VOICE": {
-        "LABEL": "Brand Voice",
-        "PLACEHOLDER": "Describe how the AI should communicate. E.g. friendly and casual, professional and concise."
+      "WEBSITE_URL": {
+        "LABEL": "Website",
+        "PLACEHOLDER": "https://yourstore.com"
       },
-      "FAQ_TEXT": {
-        "LABEL": "FAQ / Knowledge Base",
-        "PLACEHOLDER": "Add frequently asked questions and their answers. The AI will use this to respond to customers."
+      "PHONE": {
+        "LABEL": "Phone",
+        "PLACEHOLDER": "E.g. +971 50 123 4567"
+      },
+      "CONTACT_EMAIL": {
+        "LABEL": "Email",
+        "PLACEHOLDER": "E.g. hello@yourstore.com"
+      },
+      "LOCATION": {
+        "LABEL": "Location / Address",
+        "PLACEHOLDER": "E.g. Male, Maldives"
       },
       "OPERATING_HOURS": {
         "LABEL": "Operating Hours",
-        "PLACEHOLDER": "E.g. Mon–Fri 9am–6pm GMT"
+        "PLACEHOLDER": "E.g. Mon–Fri 9am–6pm, always open online"
+      },
+      "POLICIES": {
+        "PURCHASING_INFO": {
+          "LABEL": "How to order / book",
+          "PLACEHOLDER": "E.g. Send us the product details, your delivery address, and contact number via WhatsApp or Instagram. Or book via our website."
+        },
+        "PAYMENT_METHODS": {
+          "LABEL": "Payment methods",
+          "PLACEHOLDER": "E.g. We accept bank transfer and cash on delivery."
+        },
+        "SHIPPING_DELIVERY": {
+          "LABEL": "Delivery / service area",
+          "PLACEHOLDER": "E.g. Free delivery within Male. Orders before 6pm shipped same day. We serve the greater Dubai area."
+        },
+        "PROMOTIONS": {
+          "LABEL": "Promotions & discounts",
+          "PLACEHOLDER": "E.g. 10% off for first-time customers with code WELCOME10."
+        },
+        "RETURNS_EXCHANGES": {
+          "LABEL": "Returns & exchanges",
+          "PLACEHOLDER": "E.g. Factory defects can be exchanged within 24 hours of delivery."
+        }
+      },
+      "KNOWLEDGE_CARDS": {
+        "ADD_BUTTON": "Add card",
+        "TITLE_PLACEHOLDER": "E.g. Warranty, Age guidelines, Gift wrapping",
+        "CONTENT_PLACEHOLDER": "Describe this topic in detail...",
+        "EMPTY_STATE": "No knowledge cards yet. Add one to give your AI more to work with.",
+        "SAVE_CARDS": "Save Cards",
+        "SAVING_CARDS": "Saving..."
       },
       "TIMEZONE": {
         "LABEL": "Timezone",
@@ -41,15 +107,42 @@
       },
       "CURRENCY": {
         "LABEL": "Currency",
-        "PLACEHOLDER": "E.g. USD, AED"
-      },
-      "LOCALE": {
-        "LABEL": "Locale",
-        "PLACEHOLDER": "E.g. en, ar"
+        "PLACEHOLDER": "E.g. USD, MVR"
       },
       "TOKEN_BUDGET": {
         "LABEL": "Token Budget Per Thread",
         "HINT": "Minimum 1000. Controls how much context the AI processes per conversation."
+      }
+    },
+    "INSTRUCTIONS": {
+      "LEAD_COLLECTION": {
+        "TITLE": "Collect leads",
+        "DESCRIPTION": "Ask for customer contact info during the conversation.",
+        "TRIGGER_LABEL": "When to collect",
+        "TRIGGER_INTEREST": "When customer shows interest in a product",
+        "TRIGGER_GREETING": "After initial greeting",
+        "CHIPS": {
+          "NAME": "Ask for their name",
+          "EMAIL": "Ask for their email address",
+          "PHONE": "Ask for their phone number",
+          "PRODUCT": "Ask which product they're interested in"
+        },
+        "CUSTOM_PLACEHOLDER": "Add any extra lead collection instructions..."
+      },
+      "AVOID_TOPICS": {
+        "TITLE": "Avoid certain topics",
+        "DESCRIPTION": "Transfer to a human when specific topics come up.",
+        "CHIPS": {
+          "RETURNS": "Transfer when customer requests a return or exchange",
+          "CUSTOM_PRICING": "Transfer when customer asks about custom pricing",
+          "COMPETITOR": "Transfer when customer mentions a competitor"
+        },
+        "CUSTOM_PLACEHOLDER": "Describe any other topics to avoid..."
+      },
+      "CUSTOM": {
+        "TITLE": "Custom instructions",
+        "DESCRIPTION": "Any other rules for how your AI should handle customer scenarios.",
+        "PLACEHOLDER": "E.g. \"When a customer asks about prices, ask for their location first.\""
       }
     }
   }
