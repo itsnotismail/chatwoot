@@ -19,11 +19,22 @@ const isSaving = ref(false);
 const isSavingCards = ref(false);
 const selectedTab = ref(0);
 
-const EWITY_REQUIRED_PERMISSIONS = ['search_products', 'get_product'];
+// Single source of truth for Ewity permissions shown in the Connector tab.
+// To add a future optional permission (e.g. create_sale): add an entry here
+// with required: false — it renders as a toggleable checkbox automatically.
+// Required permissions are locked on and always sent on save; the backend
+// (internal/connectors/ewity/ewity.go AllPermissions) enforces this
+// independently and is the source of truth for validation.
+const EWITY_PERMISSIONS = [
+  { key: 'search_products', labelKey: 'PERM_SEARCH_PRODUCTS', required: true },
+  { key: 'get_product', labelKey: 'PERM_GET_PRODUCT', required: true },
+];
+const EWITY_REQUIRED_PERMISSIONS = EWITY_PERMISSIONS.filter(p => p.required).map(p => p.key);
 
 const connectorType = ref('none');
 const ewityToken = ref('');
 const ewityTokenHint = ref('');
+const ewityOptionalPermissions = ref([]);
 const isSavingConnector = ref(false);
 const permissionTestState = ref({});
 const permissionTestMessage = ref({});
@@ -151,6 +162,10 @@ async function fetchSettings() {
         if (ewityRes.ok) {
           const ewityData = await ewityRes.json();
           ewityTokenHint.value = ewityData.token_hint || '';
+          const saved = ewityData.permissions || [];
+          ewityOptionalPermissions.value = EWITY_PERMISSIONS
+            .filter(p => !p.required && saved.includes(p.key))
+            .map(p => p.key);
         }
       } catch (_) { /* non-fatal */ }
     }
@@ -228,7 +243,7 @@ async function saveConnector() {
       body: JSON.stringify({ connector_type: connectorType.value }),
     });
     if (connectorType.value === 'ewity') {
-      const body = { permissions: EWITY_REQUIRED_PERMISSIONS };
+      const body = { permissions: [...EWITY_REQUIRED_PERMISSIONS, ...ewityOptionalPermissions.value] };
       if (ewityToken.value) body.api_token = ewityToken.value;
       const res = await fetch(`${engineURL()}/api/accounts/${accountId}/connectors/ewity`, {
         method: 'PUT',
@@ -663,69 +678,36 @@ onMounted(fetchSettings);
                   {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.TEST_REQUIRES_SAVE') }}
                 </p>
 
-                <!-- search_products (mandatory — always enabled) -->
-                <div class="mb-3">
+                <div v-for="(perm, index) in EWITY_PERMISSIONS" :key="perm.key" :class="{ 'mb-3': index < EWITY_PERMISSIONS.length - 1 }">
                   <div class="flex items-start gap-2">
                     <input
                       type="checkbox"
-                      checked
-                      disabled
+                      :checked="perm.required || ewityOptionalPermissions.includes(perm.key)"
+                      :disabled="perm.required"
                       class="mt-0.5 w-4 h-4 accent-n-brand"
+                      @change="toggleChip(perm.key, ewityOptionalPermissions.value)"
                     />
                     <span class="text-sm text-n-slate-12 flex-1">
-                      {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.PERM_SEARCH_PRODUCTS') }}
+                      {{ t(`COMVOR_SETTINGS.CONNECTOR.EWITY.${perm.labelKey}`) }}
                     </span>
                     <button
                       type="button"
-                      :disabled="!ewityTokenHint || permissionTestState['search_products'] === 'testing'"
+                      :disabled="!ewityTokenHint || permissionTestState[perm.key] === 'testing'"
                       class="text-xs px-2 py-0.5 rounded border border-n-weak text-n-slate-11 hover:bg-n-alpha-1 disabled:opacity-50 shrink-0"
-                      @click="testPermission('search_products')"
+                      @click="testPermission(perm.key)"
                     >
-                      {{ permissionTestState['search_products'] === 'testing'
+                      {{ permissionTestState[perm.key] === 'testing'
                           ? t('COMVOR_SETTINGS.CONNECTOR.EWITY.TESTING')
                           : t('COMVOR_SETTINGS.CONNECTOR.EWITY.TEST') }}
                     </button>
                   </div>
-                  <p v-if="permissionTestState['search_products'] === 'ok'"
+                  <p v-if="permissionTestState[perm.key] === 'ok'"
                      class="mt-1 ml-6 text-xs text-green-600">
                     ✓ {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.TEST_OK') }}
                   </p>
-                  <p v-else-if="permissionTestState['search_products'] === 'error'"
+                  <p v-else-if="permissionTestState[perm.key] === 'error'"
                      class="mt-1 ml-6 text-xs text-red-600">
-                    {{ permissionTestMessage['search_products'] }}
-                  </p>
-                </div>
-
-                <!-- get_product (mandatory — always enabled) -->
-                <div>
-                  <div class="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      checked
-                      disabled
-                      class="mt-0.5 w-4 h-4 accent-n-brand"
-                    />
-                    <span class="text-sm text-n-slate-12 flex-1">
-                      {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.PERM_GET_PRODUCT') }}
-                    </span>
-                    <button
-                      type="button"
-                      :disabled="!ewityTokenHint || permissionTestState['get_product'] === 'testing'"
-                      class="text-xs px-2 py-0.5 rounded border border-n-weak text-n-slate-11 hover:bg-n-alpha-1 disabled:opacity-50 shrink-0"
-                      @click="testPermission('get_product')"
-                    >
-                      {{ permissionTestState['get_product'] === 'testing'
-                          ? t('COMVOR_SETTINGS.CONNECTOR.EWITY.TESTING')
-                          : t('COMVOR_SETTINGS.CONNECTOR.EWITY.TEST') }}
-                    </button>
-                  </div>
-                  <p v-if="permissionTestState['get_product'] === 'ok'"
-                     class="mt-1 ml-6 text-xs text-green-600">
-                    ✓ {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.TEST_OK') }}
-                  </p>
-                  <p v-else-if="permissionTestState['get_product'] === 'error'"
-                     class="mt-1 ml-6 text-xs text-red-600">
-                    {{ permissionTestMessage['get_product'] }}
+                    {{ permissionTestMessage[perm.key] }}
                   </p>
                 </div>
               </div>
