@@ -8,6 +8,13 @@
     "SAVE_SUCCESS": "Settings saved successfully.",
     "SAVE_ERROR": "Failed to save settings. Please try again.",
     "FETCH_ERROR": "Failed to load settings. Please refresh the page.",
+    "TABS": {
+      "PROFILE": "Profile",
+      "POLICIES": "Policies",
+      "KNOWLEDGE": "Knowledge",
+      "INSTRUCTIONS": "Instructions",
+      "CONNECTOR": "Connector"
+    },
     "SECTION": {
       "IDENTITY": {
         "TITLE": "Agent Identity",
@@ -28,6 +35,10 @@
       "INSTRUCTIONS": {
         "TITLE": "Instructions",
         "DESCRIPTION": "Give your AI goals and rules for how to handle customer conversations."
+      },
+      "CONNECTOR": {
+        "TITLE": "Connector",
+        "DESCRIPTION": "Connect your AI to a live data source so it can answer questions about products and inventory."
       }
     },
     "FIELDS": {
@@ -46,6 +57,10 @@
           "CONCISE": "Direct & Brief"
         }
       },
+      "BUSINESS_NAME": {
+        "LABEL": "Business Name",
+        "PLACEHOLDER": "E.g. Zara Boutique, TechFix Maldives"
+      },
       "BUSINESS_DESCRIPTION": {
         "LABEL": "Business Description",
         "PLACEHOLDER": "Briefly describe what your business does, your products, and who your customers are.",
@@ -61,7 +76,7 @@
       },
       "CONTACT_EMAIL": {
         "LABEL": "Email",
-        "PLACEHOLDER": "E.g. hello@yourstore.com"
+        "PLACEHOLDER": "E.g. hello{'@'}yourstore.com"
       },
       "LOCATION": {
         "LABEL": "Location / Address",
@@ -113,6 +128,29 @@
       "TOKEN_BUDGET": {
         "LABEL": "Token Budget Per Thread",
         "HINT": "Minimum 1000. Controls how much context the AI processes per conversation."
+      }
+    },
+    "CONNECTOR": {
+      "TYPE_LABEL": "Connector type",
+      "TYPE_NONE": "None",
+      "TYPE_EWITY": "Ewity POS",
+      "EWITY": {
+        "TOKEN_LABEL": "API Token",
+        "TOKEN_PLACEHOLDER": "uat_...",
+        "TOKEN_HINT": "Paste your Ewity API token. It is encrypted and stored securely.",
+        "PERMISSIONS_LABEL": "Enabled permissions",
+        "PERM_SEARCH_PRODUCTS": "Search products — answer questions about stock and pricing",
+        "PERM_GET_PRODUCT": "Get product details — answer questions about a specific product's description",
+        "TEST": "Test",
+        "TESTING": "Testing...",
+        "TEST_OK": "Access confirmed",
+        "TEST_PERMISSION_DENIED": "Permission denied — grant access in Ewity under Settings → API Roles",
+        "TEST_INVALID_TOKEN": "Invalid token — check the token and try again",
+        "TEST_UNREACHABLE": "Could not reach Ewity — check your connection",
+        "SAVE": "Save Connector",
+        "SAVING": "Saving...",
+        "SAVE_SUCCESS": "Connector settings saved.",
+        "SAVE_ERROR": "Failed to save connector settings."
       }
     },
     "INSTRUCTIONS": {
