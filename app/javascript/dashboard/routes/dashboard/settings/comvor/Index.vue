@@ -17,6 +17,15 @@ const accountId = route.params.accountId;
 const isLoading = ref(false);
 const isSaving = ref(false);
 const isSavingCards = ref(false);
+const selectedTab = ref(0);
+
+const connectorType = ref('none');
+const ewityToken = ref('');
+const ewityTokenHint = ref('');
+const ewityPermissions = ref([]);
+const isSavingConnector = ref(false);
+const permissionTestState = ref({});
+const permissionTestMessage = ref({});
 
 const TONE_OPTIONS = [
   { value: 'warm_friendly', label: t('COMVOR_SETTINGS.FIELDS.TONE.OPTIONS.WARM_FRIENDLY') },
@@ -49,6 +58,7 @@ const POLICY_LIMITS = {
 const form = ref({
   agent_name: '',
   brand_voice: 'warm_friendly',
+  business_name: '',
   business_description: '',
   website_url: '',
   phone: '',
@@ -91,12 +101,12 @@ async function fetchSettings() {
       fetch(`${engineURL()}/api/accounts/${accountId}/knowledge-cards`, { headers: authHeaders() }),
     ]);
     if (!accRes.ok) throw new Error(`account HTTP ${accRes.status}`);
-    if (!cardsRes.ok) throw new Error(`cards HTTP ${cardsRes.status}`);
 
     const data = await accRes.json();
     form.value = {
       agent_name:          data.agent_name || '',
       brand_voice:         data.brand_voice || 'warm_friendly',
+      business_name:       data.business_name || '',
       business_description: data.business_description || '',
       website_url:         data.website_url || '',
       phone:               data.phone || '',
@@ -128,7 +138,22 @@ async function fetchSettings() {
       },
     };
 
-    knowledgeCards.value = await cardsRes.json();
+    if (cardsRes.ok) knowledgeCards.value = await cardsRes.json();
+
+    connectorType.value = data.connector_type || 'none';
+    if (connectorType.value === 'ewity') {
+      try {
+        const ewityRes = await fetch(
+          `${engineURL()}/api/accounts/${accountId}/connectors/ewity`,
+          { headers: authHeaders() }
+        );
+        if (ewityRes.ok) {
+          const ewityData = await ewityRes.json();
+          ewityPermissions.value = ewityData.permissions || [];
+          ewityTokenHint.value = ewityData.token_hint || '';
+        }
+      } catch (_) { /* non-fatal */ }
+    }
   } catch (e) {
     useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
   } finally {
@@ -193,6 +218,65 @@ function toggleChip(chipLabel, list) {
   else list.splice(idx, 1);
 }
 
+async function saveConnector() {
+  if (!engineURL()) return;
+  isSavingConnector.value = true;
+  try {
+    await fetch(`${engineURL()}/api/accounts/${accountId}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ connector_type: connectorType.value }),
+    });
+    if (connectorType.value === 'ewity') {
+      const body = { permissions: ewityPermissions.value };
+      if (ewityToken.value) body.api_token = ewityToken.value;
+      await fetch(`${engineURL()}/api/accounts/${accountId}/connectors/ewity`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(body),
+      });
+    }
+    useAlert(t('COMVOR_SETTINGS.CONNECTOR.EWITY.SAVE_SUCCESS'));
+  } catch (_) {
+    useAlert(t('COMVOR_SETTINGS.CONNECTOR.EWITY.SAVE_ERROR'));
+  } finally {
+    isSavingConnector.value = false;
+  }
+}
+
+async function testPermission(permission) {
+  if (!engineURL()) return;
+  permissionTestState.value[permission] = 'testing';
+  permissionTestMessage.value[permission] = '';
+  try {
+    const body = { permission };
+    if (ewityToken.value) body.api_token = ewityToken.value;
+    const res = await fetch(
+      `${engineURL()}/api/accounts/${accountId}/connectors/ewity/test`,
+      {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(body),
+      }
+    );
+    const data = await res.json();
+    if (data.ok) {
+      permissionTestState.value[permission] = 'ok';
+    } else {
+      permissionTestState.value[permission] = 'error';
+      const reasonKey = {
+        permission_denied: 'TEST_PERMISSION_DENIED',
+        invalid_token: 'TEST_INVALID_TOKEN',
+        unreachable: 'TEST_UNREACHABLE',
+      }[data.reason] || 'TEST_UNREACHABLE';
+      permissionTestMessage.value[permission] = t(`COMVOR_SETTINGS.CONNECTOR.EWITY.${reasonKey}`);
+    }
+  } catch (_) {
+    permissionTestState.value[permission] = 'error';
+    permissionTestMessage.value[permission] = t('COMVOR_SETTINGS.CONNECTOR.EWITY.TEST_UNREACHABLE');
+  }
+}
+
 onMounted(fetchSettings);
 </script>
 
@@ -208,313 +292,446 @@ onMounted(fetchSettings);
         :description="t('COMVOR_SETTINGS.DESCRIPTION')"
         icon-name="bot-message-square"
       />
+      <woot-tabs
+        class="[&_ul]:p-0"
+        :index="selectedTab"
+        :border="false"
+        @change="selectedTab = $event"
+      >
+        <woot-tabs-item :index="0" :name="t('COMVOR_SETTINGS.TABS.PROFILE')" :show-badge="false" is-compact />
+        <woot-tabs-item :index="1" :name="t('COMVOR_SETTINGS.TABS.POLICIES')" :show-badge="false" is-compact />
+        <woot-tabs-item :index="2" :name="t('COMVOR_SETTINGS.TABS.KNOWLEDGE')" :show-badge="false" is-compact />
+        <woot-tabs-item :index="3" :name="t('COMVOR_SETTINGS.TABS.INSTRUCTIONS')" :show-badge="false" is-compact />
+        <woot-tabs-item :index="4" :name="t('COMVOR_SETTINGS.TABS.CONNECTOR')" :show-badge="false" is-compact />
+      </woot-tabs>
     </template>
 
     <template #body>
 
-      <!-- ── Section 1: Agent Identity ── -->
-      <SectionLayout
-        :title="t('COMVOR_SETTINGS.SECTION.IDENTITY.TITLE')"
-        :description="t('COMVOR_SETTINGS.SECTION.IDENTITY.DESCRIPTION')"
-      >
-        <div class="grid grid-cols-2 gap-4">
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.AGENT_NAME.LABEL') }}</span>
-            <input
-              v-model="form.agent_name"
-              type="text"
-              maxlength="100"
-              class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-              :placeholder="t('COMVOR_SETTINGS.FIELDS.AGENT_NAME.PLACEHOLDER')"
-            />
-            <span class="text-xs text-n-slate-11">{{ t('COMVOR_SETTINGS.FIELDS.AGENT_NAME.HINT') }}</span>
-          </label>
-
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.TONE.LABEL') }}</span>
-            <select
-              v-model="form.brand_voice"
-              class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-            >
-              <option v-for="opt in TONE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-            </select>
-            <span class="text-xs text-n-slate-11">{{ t('COMVOR_SETTINGS.FIELDS.TONE.HINT') }}</span>
-          </label>
-        </div>
-      </SectionLayout>
-
-      <!-- ── Section 2: Business Info ── -->
-      <SectionLayout
-        :title="t('COMVOR_SETTINGS.SECTION.BUSINESS.TITLE')"
-        :description="t('COMVOR_SETTINGS.SECTION.BUSINESS.DESCRIPTION')"
-        with-border
-      >
-        <div class="flex flex-col gap-4">
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.BUSINESS_DESCRIPTION.LABEL') }}</span>
-            <textarea
-              v-model="form.business_description"
-              rows="3"
-              maxlength="300"
-              class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-              :placeholder="t('COMVOR_SETTINGS.FIELDS.BUSINESS_DESCRIPTION.PLACEHOLDER')"
-            />
-            <span class="text-xs text-n-slate-11">{{ form.business_description.length }}/300 — {{ t('COMVOR_SETTINGS.FIELDS.BUSINESS_DESCRIPTION.HINT') }}</span>
-          </label>
-
-          <div class="grid grid-cols-2 gap-4">
-            <label class="flex flex-col gap-1">
-              <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.WEBSITE_URL.LABEL') }}</span>
-              <input v-model="form.website_url" type="url" maxlength="255"
-                class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-                :placeholder="t('COMVOR_SETTINGS.FIELDS.WEBSITE_URL.PLACEHOLDER')" />
-            </label>
-            <label class="flex flex-col gap-1">
-              <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.PHONE.LABEL') }}</span>
-              <input v-model="form.phone" type="tel" maxlength="50"
-                class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-                :placeholder="t('COMVOR_SETTINGS.FIELDS.PHONE.PLACEHOLDER')" />
-            </label>
-            <label class="flex flex-col gap-1">
-              <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.CONTACT_EMAIL.LABEL') }}</span>
-              <input v-model="form.contact_email" type="email" maxlength="255"
-                class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-                :placeholder="t('COMVOR_SETTINGS.FIELDS.CONTACT_EMAIL.PLACEHOLDER')" />
-            </label>
-            <label class="flex flex-col gap-1">
-              <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.LOCATION.LABEL') }}</span>
-              <input v-model="form.location" type="text" maxlength="255"
-                class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-                :placeholder="t('COMVOR_SETTINGS.FIELDS.LOCATION.PLACEHOLDER')" />
-            </label>
-          </div>
-
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.OPERATING_HOURS.LABEL') }}</span>
-            <textarea v-model="form.operating_hours" rows="2" maxlength="300"
-              class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-              :placeholder="t('COMVOR_SETTINGS.FIELDS.OPERATING_HOURS.PLACEHOLDER')" />
-          </label>
-
-          <div class="grid grid-cols-2 gap-4">
-            <label class="flex flex-col gap-1">
-              <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.TIMEZONE.LABEL') }}</span>
-              <input v-model="form.timezone" type="text"
-                class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-                :placeholder="t('COMVOR_SETTINGS.FIELDS.TIMEZONE.PLACEHOLDER')" />
-            </label>
-            <label class="flex flex-col gap-1">
-              <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.CURRENCY.LABEL') }}</span>
-              <input v-model="form.currency" type="text" maxlength="10"
-                class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-                :placeholder="t('COMVOR_SETTINGS.FIELDS.CURRENCY.PLACEHOLDER')" />
-            </label>
-          </div>
-        </div>
-      </SectionLayout>
-
-      <!-- ── Section 3: Policies ── -->
-      <SectionLayout
-        :title="t('COMVOR_SETTINGS.SECTION.POLICIES.TITLE')"
-        :description="t('COMVOR_SETTINGS.SECTION.POLICIES.DESCRIPTION')"
-        with-border
-      >
-        <div class="flex flex-col gap-4">
-          <label v-for="(policy, key) in form.policies" :key="key" class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-n-slate-12">
-              {{ t(`COMVOR_SETTINGS.FIELDS.POLICIES.${key.toUpperCase()}.LABEL`) }}
-            </span>
-            <textarea
-              v-model="form.policies[key]"
-              rows="3"
-              :maxlength="POLICY_LIMITS[key]"
-              class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-              :placeholder="t(`COMVOR_SETTINGS.FIELDS.POLICIES.${key.toUpperCase()}.PLACEHOLDER`)"
-            />
-          </label>
-        </div>
-      </SectionLayout>
-
-      <!-- ── Save button (sections 1-3) ── -->
-      <div class="flex justify-end px-6 py-4 border-b border-n-weak">
-        <button
-          class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
-          :disabled="isSaving"
-          @click="saveSettings"
+      <!-- ── Tab 0: Profile ── -->
+      <template v-if="selectedTab === 0">
+        <SectionLayout
+          :title="t('COMVOR_SETTINGS.SECTION.IDENTITY.TITLE')"
+          :description="t('COMVOR_SETTINGS.SECTION.IDENTITY.DESCRIPTION')"
         >
-          {{ isSaving ? t('COMVOR_SETTINGS.SAVING') : t('COMVOR_SETTINGS.SAVE') }}
-        </button>
-      </div>
-
-      <!-- ── Section 4: Knowledge Cards ── -->
-      <SectionLayout
-        :title="t('COMVOR_SETTINGS.SECTION.KNOWLEDGE.TITLE')"
-        :description="t('COMVOR_SETTINGS.SECTION.KNOWLEDGE.DESCRIPTION')"
-        with-border
-      >
-        <div class="flex flex-col gap-3">
-          <p v-if="knowledgeCards.length === 0" class="text-sm text-n-slate-11">
-            {{ t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.EMPTY_STATE') }}
-          </p>
-
-          <div
-            v-for="(card, index) in knowledgeCards"
-            :key="card.id || index"
-            class="rounded-lg border border-n-weak bg-n-surface-1 p-4 flex flex-col gap-2"
-          >
-            <div class="flex items-center gap-2">
+          <div class="grid grid-cols-2 gap-4">
+            <label class="flex flex-col gap-1">
+              <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.AGENT_NAME.LABEL') }}</span>
               <input
-                v-model="card.title"
+                v-model="form.agent_name"
                 type="text"
                 maxlength="100"
-                class="flex-1 rounded border border-n-weak bg-n-alpha-1 px-2 py-1 text-sm text-n-slate-12 focus:outline-none focus:ring-1 focus:ring-n-brand"
-                :placeholder="t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.TITLE_PLACEHOLDER')"
+                class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                :placeholder="t('COMVOR_SETTINGS.FIELDS.AGENT_NAME.PLACEHOLDER')"
               />
-              <button
-                class="text-n-slate-10 hover:text-n-red-9 text-xs px-2 py-1"
-                @click="removeCard(index)"
-              >✕</button>
-            </div>
-            <textarea
-              v-model="card.content"
-              rows="3"
-              maxlength="1000"
-              class="w-full rounded border border-n-weak bg-n-alpha-1 px-2 py-1 text-sm text-n-slate-12 focus:outline-none focus:ring-1 focus:ring-n-brand"
-              :placeholder="t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.CONTENT_PLACEHOLDER')"
-            />
-            <span class="text-xs text-n-slate-11 text-right">{{ card.content.length }}/1000</span>
+              <span class="text-xs text-n-slate-11">{{ t('COMVOR_SETTINGS.FIELDS.AGENT_NAME.HINT') }}</span>
+            </label>
+            <label class="flex flex-col gap-1">
+              <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.TONE.LABEL') }}</span>
+              <select
+                v-model="form.brand_voice"
+                class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+              >
+                <option v-for="opt in TONE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              </select>
+              <span class="text-xs text-n-slate-11">{{ t('COMVOR_SETTINGS.FIELDS.TONE.HINT') }}</span>
+            </label>
           </div>
+        </SectionLayout>
 
-          <div class="flex items-center justify-between mt-1">
-            <button
-              v-if="knowledgeCards.length < 20"
-              class="text-sm text-n-brand hover:underline"
-              @click="addCard"
-            >+ {{ t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.ADD_BUTTON') }}</button>
-            <span v-else class="text-xs text-n-slate-11">{{ t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.MAX_CARDS_REACHED') }}</span>
-
-            <button
-              class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
-              :disabled="isSavingCards"
-              @click="saveKnowledgeCards"
-            >
-              {{ isSavingCards ? t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.SAVING_CARDS') : t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.SAVE_CARDS') }}
-            </button>
-          </div>
-        </div>
-      </SectionLayout>
-
-      <!-- ── Section 5: Instructions ── -->
-      <SectionLayout
-        :title="t('COMVOR_SETTINGS.SECTION.INSTRUCTIONS.TITLE')"
-        :description="t('COMVOR_SETTINGS.SECTION.INSTRUCTIONS.DESCRIPTION')"
-        with-border
-      >
-        <div class="flex flex-col gap-6">
-
-          <!-- Collect leads -->
-          <div class="flex flex-col gap-3">
-            <div class="flex items-center gap-3">
-              <input type="checkbox" v-model="form.instruction_modules.lead_collection.enabled"
-                class="w-4 h-4 accent-n-brand" id="lead-toggle" />
-              <label for="lead-toggle" class="text-sm font-medium text-n-slate-12">
-                {{ t('COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.TITLE') }}
-              </label>
-            </div>
-            <p class="text-xs text-n-slate-11 ml-7">{{ t('COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.DESCRIPTION') }}</p>
-
-            <template v-if="form.instruction_modules.lead_collection.enabled">
-              <div class="ml-7 flex flex-wrap gap-2">
-                <button
-                  v-for="chip in LEAD_CHIPS"
-                  :key="chip.key"
-                  class="rounded-full border px-3 py-1 text-xs transition-colors"
-                  :class="form.instruction_modules.lead_collection.chips.includes(chip.label)
-                    ? 'border-n-brand bg-n-brand/10 text-n-brand'
-                    : 'border-n-weak text-n-slate-11 hover:border-n-brand'"
-                  @click="toggleChip(chip.label, form.instruction_modules.lead_collection.chips)"
-                >{{ chip.label }}</button>
-              </div>
-
-              <div class="ml-7">
-                <label class="text-xs text-n-slate-11 mb-1 block">{{ t('COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.TRIGGER_LABEL') }}</label>
-                <select v-model="form.instruction_modules.lead_collection.trigger"
-                  class="rounded border border-n-weak bg-n-surface-1 px-2 py-1 text-sm text-n-slate-12 focus:outline-none focus:ring-1 focus:ring-n-brand">
-                  <option value="interest">{{ t('COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.TRIGGER_INTEREST') }}</option>
-                  <option value="greeting">{{ t('COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.TRIGGER_GREETING') }}</option>
-                </select>
-              </div>
-
-              <textarea
-                v-model="form.instruction_modules.lead_collection.custom"
-                rows="2"
-                maxlength="500"
-                class="ml-7 w-[calc(100%-1.75rem)] rounded border border-n-weak bg-n-surface-1 px-2 py-1 text-sm text-n-slate-12 focus:outline-none focus:ring-1 focus:ring-n-brand"
-                :placeholder="t('COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.CUSTOM_PLACEHOLDER')"
-              />
-            </template>
-          </div>
-
-          <!-- Avoid certain topics -->
-          <div class="flex flex-col gap-3">
-            <div class="flex items-center gap-3">
-              <input type="checkbox" v-model="form.instruction_modules.avoid_topics.enabled"
-                class="w-4 h-4 accent-n-brand" id="avoid-toggle" />
-              <label for="avoid-toggle" class="text-sm font-medium text-n-slate-12">
-                {{ t('COMVOR_SETTINGS.INSTRUCTIONS.AVOID_TOPICS.TITLE') }}
-              </label>
-            </div>
-            <p class="text-xs text-n-slate-11 ml-7">{{ t('COMVOR_SETTINGS.INSTRUCTIONS.AVOID_TOPICS.DESCRIPTION') }}</p>
-
-            <template v-if="form.instruction_modules.avoid_topics.enabled">
-              <div class="ml-7 flex flex-wrap gap-2">
-                <button
-                  v-for="chip in AVOID_CHIPS"
-                  :key="chip.key"
-                  class="rounded-full border px-3 py-1 text-xs transition-colors"
-                  :class="form.instruction_modules.avoid_topics.chips.includes(chip.label)
-                    ? 'border-n-brand bg-n-brand/10 text-n-brand'
-                    : 'border-n-weak text-n-slate-11 hover:border-n-brand'"
-                  @click="toggleChip(chip.label, form.instruction_modules.avoid_topics.chips)"
-                >{{ chip.label }}</button>
-              </div>
-
-              <textarea
-                v-model="form.instruction_modules.avoid_topics.custom"
-                rows="2"
-                maxlength="500"
-                class="ml-7 w-[calc(100%-1.75rem)] rounded border border-n-weak bg-n-surface-1 px-2 py-1 text-sm text-n-slate-12 focus:outline-none focus:ring-1 focus:ring-n-brand"
-                :placeholder="t('COMVOR_SETTINGS.INSTRUCTIONS.AVOID_TOPICS.CUSTOM_PLACEHOLDER')"
-              />
-            </template>
-          </div>
-
-          <!-- Custom instructions -->
-          <div class="flex flex-col gap-2">
-            <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.INSTRUCTIONS.CUSTOM.TITLE') }}</span>
-            <p class="text-xs text-n-slate-11">{{ t('COMVOR_SETTINGS.INSTRUCTIONS.CUSTOM.DESCRIPTION') }}</p>
-            <textarea
-              v-model="form.instruction_modules.custom_instructions"
-              rows="3"
-              maxlength="1000"
-              class="w-full rounded border border-n-weak bg-n-surface-1 px-2 py-1 text-sm text-n-slate-12 focus:outline-none focus:ring-1 focus:ring-n-brand"
-              :placeholder="t('COMVOR_SETTINGS.INSTRUCTIONS.CUSTOM.PLACEHOLDER')"
-            />
-            <span class="text-xs text-n-slate-11 text-right">{{ form.instruction_modules.custom_instructions.length }}/1000</span>
-          </div>
-        </div>
-      </SectionLayout>
-
-      <!-- ── Final Save button (sections 1-2-3-5) ── -->
-      <div class="flex justify-end px-6 py-4">
-        <button
-          class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
-          :disabled="isSaving"
-          @click="saveSettings"
+        <SectionLayout
+          :title="t('COMVOR_SETTINGS.SECTION.BUSINESS.TITLE')"
+          :description="t('COMVOR_SETTINGS.SECTION.BUSINESS.DESCRIPTION')"
+          with-border
         >
-          {{ isSaving ? t('COMVOR_SETTINGS.SAVING') : t('COMVOR_SETTINGS.SAVE') }}
-        </button>
-      </div>
+          <div class="flex flex-col gap-4">
+            <label class="flex flex-col gap-1">
+              <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.BUSINESS_NAME.LABEL') }}</span>
+              <input v-model="form.business_name" type="text" maxlength="255"
+                class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                :placeholder="t('COMVOR_SETTINGS.FIELDS.BUSINESS_NAME.PLACEHOLDER')" />
+            </label>
+            <label class="flex flex-col gap-1">
+              <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.BUSINESS_DESCRIPTION.LABEL') }}</span>
+              <textarea
+                v-model="form.business_description"
+                rows="3"
+                maxlength="300"
+                class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                :placeholder="t('COMVOR_SETTINGS.FIELDS.BUSINESS_DESCRIPTION.PLACEHOLDER')"
+              />
+              <span class="text-xs text-n-slate-11">{{ (form.business_description || '').length }}/300 — {{ t('COMVOR_SETTINGS.FIELDS.BUSINESS_DESCRIPTION.HINT') }}</span>
+            </label>
+            <div class="grid grid-cols-2 gap-4">
+              <label class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.WEBSITE_URL.LABEL') }}</span>
+                <input v-model="form.website_url" type="url" maxlength="255"
+                  class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                  :placeholder="t('COMVOR_SETTINGS.FIELDS.WEBSITE_URL.PLACEHOLDER')" />
+              </label>
+              <label class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.PHONE.LABEL') }}</span>
+                <input v-model="form.phone" type="tel" maxlength="50"
+                  class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                  :placeholder="t('COMVOR_SETTINGS.FIELDS.PHONE.PLACEHOLDER')" />
+              </label>
+              <label class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.CONTACT_EMAIL.LABEL') }}</span>
+                <input v-model="form.contact_email" type="email" maxlength="255"
+                  class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                  :placeholder="t('COMVOR_SETTINGS.FIELDS.CONTACT_EMAIL.PLACEHOLDER')" />
+              </label>
+              <label class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.LOCATION.LABEL') }}</span>
+                <input v-model="form.location" type="text" maxlength="255"
+                  class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                  :placeholder="t('COMVOR_SETTINGS.FIELDS.LOCATION.PLACEHOLDER')" />
+              </label>
+            </div>
+            <label class="flex flex-col gap-1">
+              <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.OPERATING_HOURS.LABEL') }}</span>
+              <textarea v-model="form.operating_hours" rows="2" maxlength="300"
+                class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                :placeholder="t('COMVOR_SETTINGS.FIELDS.OPERATING_HOURS.PLACEHOLDER')" />
+            </label>
+            <div class="grid grid-cols-2 gap-4">
+              <label class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.TIMEZONE.LABEL') }}</span>
+                <input v-model="form.timezone" type="text"
+                  class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                  :placeholder="t('COMVOR_SETTINGS.FIELDS.TIMEZONE.PLACEHOLDER')" />
+              </label>
+              <label class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.FIELDS.CURRENCY.LABEL') }}</span>
+                <input v-model="form.currency" type="text" maxlength="10"
+                  class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                  :placeholder="t('COMVOR_SETTINGS.FIELDS.CURRENCY.PLACEHOLDER')" />
+              </label>
+            </div>
+          </div>
+        </SectionLayout>
+
+        <div class="flex justify-end px-6 py-4">
+          <button
+            class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
+            :disabled="isSaving"
+            @click="saveSettings"
+          >
+            {{ isSaving ? t('COMVOR_SETTINGS.SAVING') : t('COMVOR_SETTINGS.SAVE') }}
+          </button>
+        </div>
+      </template>
+
+      <!-- ── Tab 1: Policies ── -->
+      <template v-else-if="selectedTab === 1">
+        <SectionLayout
+          :title="t('COMVOR_SETTINGS.SECTION.POLICIES.TITLE')"
+          :description="t('COMVOR_SETTINGS.SECTION.POLICIES.DESCRIPTION')"
+        >
+          <div class="flex flex-col gap-4">
+            <label v-for="(policy, key) in form.policies" :key="key" class="flex flex-col gap-1">
+              <span class="text-sm font-medium text-n-slate-12">
+                {{ t(`COMVOR_SETTINGS.FIELDS.POLICIES.${key.toUpperCase()}.LABEL`) }}
+              </span>
+              <textarea
+                v-model="form.policies[key]"
+                rows="3"
+                :maxlength="POLICY_LIMITS[key]"
+                class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                :placeholder="t(`COMVOR_SETTINGS.FIELDS.POLICIES.${key.toUpperCase()}.PLACEHOLDER`)"
+              />
+            </label>
+          </div>
+        </SectionLayout>
+
+        <div class="flex justify-end px-6 py-4">
+          <button
+            class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
+            :disabled="isSaving"
+            @click="saveSettings"
+          >
+            {{ isSaving ? t('COMVOR_SETTINGS.SAVING') : t('COMVOR_SETTINGS.SAVE') }}
+          </button>
+        </div>
+      </template>
+
+      <!-- ── Tab 2: Knowledge Cards ── -->
+      <template v-else-if="selectedTab === 2">
+        <SectionLayout
+          :title="t('COMVOR_SETTINGS.SECTION.KNOWLEDGE.TITLE')"
+          :description="t('COMVOR_SETTINGS.SECTION.KNOWLEDGE.DESCRIPTION')"
+        >
+          <div class="flex flex-col gap-3">
+            <p v-if="knowledgeCards.length === 0" class="text-sm text-n-slate-11">
+              {{ t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.EMPTY_STATE') }}
+            </p>
+            <div
+              v-for="(card, index) in knowledgeCards"
+              :key="card.id || index"
+              class="rounded-lg border border-n-weak bg-n-surface-1 p-4 flex flex-col gap-2"
+            >
+              <div class="flex items-center gap-2">
+                <input
+                  v-model="card.title"
+                  type="text"
+                  maxlength="100"
+                  class="flex-1 rounded border border-n-weak bg-n-alpha-1 px-2 py-1 text-sm text-n-slate-12 focus:outline-none focus:ring-1 focus:ring-n-brand"
+                  :placeholder="t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.TITLE_PLACEHOLDER')"
+                />
+                <button class="text-n-slate-10 hover:text-n-red-9 text-xs px-2 py-1" @click="removeCard(index)">✕</button>
+              </div>
+              <textarea
+                v-model="card.content"
+                rows="3"
+                maxlength="1000"
+                class="w-full rounded border border-n-weak bg-n-alpha-1 px-2 py-1 text-sm text-n-slate-12 focus:outline-none focus:ring-1 focus:ring-n-brand"
+                :placeholder="t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.CONTENT_PLACEHOLDER')"
+              />
+              <span class="text-xs text-n-slate-11 text-right">{{ card.content.length }}/1000</span>
+            </div>
+            <div class="flex items-center justify-between mt-1">
+              <button
+                v-if="knowledgeCards.length < 20"
+                class="text-sm text-n-brand hover:underline"
+                @click="addCard"
+              >+ {{ t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.ADD_BUTTON') }}</button>
+              <span v-else class="text-xs text-n-slate-11">{{ t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.MAX_CARDS_REACHED') }}</span>
+              <button
+                class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
+                :disabled="isSavingCards"
+                @click="saveKnowledgeCards"
+              >
+                {{ isSavingCards ? t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.SAVING_CARDS') : t('COMVOR_SETTINGS.FIELDS.KNOWLEDGE_CARDS.SAVE_CARDS') }}
+              </button>
+            </div>
+          </div>
+        </SectionLayout>
+      </template>
+
+      <!-- ── Tab 3: Instructions ── -->
+      <template v-else-if="selectedTab === 3">
+        <SectionLayout
+          :title="t('COMVOR_SETTINGS.SECTION.INSTRUCTIONS.TITLE')"
+          :description="t('COMVOR_SETTINGS.SECTION.INSTRUCTIONS.DESCRIPTION')"
+        >
+          <div class="flex flex-col gap-6">
+            <div class="flex flex-col gap-3">
+              <div class="flex items-center gap-3">
+                <input type="checkbox" v-model="form.instruction_modules.lead_collection.enabled"
+                  class="w-4 h-4 accent-n-brand" id="lead-toggle" />
+                <label for="lead-toggle" class="text-sm font-medium text-n-slate-12">
+                  {{ t('COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.TITLE') }}
+                </label>
+              </div>
+              <p class="text-xs text-n-slate-11 ml-7">{{ t('COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.DESCRIPTION') }}</p>
+              <template v-if="form.instruction_modules.lead_collection.enabled">
+                <div class="ml-7 flex flex-wrap gap-2">
+                  <button
+                    v-for="chip in LEAD_CHIPS" :key="chip.key"
+                    class="rounded-full border px-3 py-1 text-xs transition-colors"
+                    :class="form.instruction_modules.lead_collection.chips.includes(chip.label)
+                      ? 'border-n-brand bg-n-brand/10 text-n-brand'
+                      : 'border-n-weak text-n-slate-11 hover:border-n-brand'"
+                    @click="toggleChip(chip.label, form.instruction_modules.lead_collection.chips)"
+                  >{{ chip.label }}</button>
+                </div>
+                <div class="ml-7">
+                  <label class="text-xs text-n-slate-11 mb-1 block">{{ t('COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.TRIGGER_LABEL') }}</label>
+                  <select v-model="form.instruction_modules.lead_collection.trigger"
+                    class="rounded border border-n-weak bg-n-surface-1 px-2 py-1 text-sm text-n-slate-12 focus:outline-none focus:ring-1 focus:ring-n-brand">
+                    <option value="interest">{{ t('COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.TRIGGER_INTEREST') }}</option>
+                    <option value="greeting">{{ t('COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.TRIGGER_GREETING') }}</option>
+                  </select>
+                </div>
+                <textarea
+                  v-model="form.instruction_modules.lead_collection.custom"
+                  rows="2" maxlength="500"
+                  class="ml-7 w-[calc(100%-1.75rem)] rounded border border-n-weak bg-n-surface-1 px-2 py-1 text-sm text-n-slate-12 focus:outline-none focus:ring-1 focus:ring-n-brand"
+                  :placeholder="t('COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.CUSTOM_PLACEHOLDER')"
+                />
+              </template>
+            </div>
+
+            <div class="flex flex-col gap-3">
+              <div class="flex items-center gap-3">
+                <input type="checkbox" v-model="form.instruction_modules.avoid_topics.enabled"
+                  class="w-4 h-4 accent-n-brand" id="avoid-toggle" />
+                <label for="avoid-toggle" class="text-sm font-medium text-n-slate-12">
+                  {{ t('COMVOR_SETTINGS.INSTRUCTIONS.AVOID_TOPICS.TITLE') }}
+                </label>
+              </div>
+              <p class="text-xs text-n-slate-11 ml-7">{{ t('COMVOR_SETTINGS.INSTRUCTIONS.AVOID_TOPICS.DESCRIPTION') }}</p>
+              <template v-if="form.instruction_modules.avoid_topics.enabled">
+                <div class="ml-7 flex flex-wrap gap-2">
+                  <button
+                    v-for="chip in AVOID_CHIPS" :key="chip.key"
+                    class="rounded-full border px-3 py-1 text-xs transition-colors"
+                    :class="form.instruction_modules.avoid_topics.chips.includes(chip.label)
+                      ? 'border-n-brand bg-n-brand/10 text-n-brand'
+                      : 'border-n-weak text-n-slate-11 hover:border-n-brand'"
+                    @click="toggleChip(chip.label, form.instruction_modules.avoid_topics.chips)"
+                  >{{ chip.label }}</button>
+                </div>
+                <textarea
+                  v-model="form.instruction_modules.avoid_topics.custom"
+                  rows="2" maxlength="500"
+                  class="ml-7 w-[calc(100%-1.75rem)] rounded border border-n-weak bg-n-surface-1 px-2 py-1 text-sm text-n-slate-12 focus:outline-none focus:ring-1 focus:ring-n-brand"
+                  :placeholder="t('COMVOR_SETTINGS.INSTRUCTIONS.AVOID_TOPICS.CUSTOM_PLACEHOLDER')"
+                />
+              </template>
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <span class="text-sm font-medium text-n-slate-12">{{ t('COMVOR_SETTINGS.INSTRUCTIONS.CUSTOM.TITLE') }}</span>
+              <p class="text-xs text-n-slate-11">{{ t('COMVOR_SETTINGS.INSTRUCTIONS.CUSTOM.DESCRIPTION') }}</p>
+              <textarea
+                v-model="form.instruction_modules.custom_instructions"
+                rows="3" maxlength="1000"
+                class="w-full rounded border border-n-weak bg-n-surface-1 px-2 py-1 text-sm text-n-slate-12 focus:outline-none focus:ring-1 focus:ring-n-brand"
+                :placeholder="t('COMVOR_SETTINGS.INSTRUCTIONS.CUSTOM.PLACEHOLDER')"
+              />
+              <span class="text-xs text-n-slate-11 text-right">{{ (form.instruction_modules.custom_instructions || '').length }}/1000</span>
+            </div>
+          </div>
+        </SectionLayout>
+
+        <div class="flex justify-end px-6 py-4">
+          <button
+            class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
+            :disabled="isSaving"
+            @click="saveSettings"
+          >
+            {{ isSaving ? t('COMVOR_SETTINGS.SAVING') : t('COMVOR_SETTINGS.SAVE') }}
+          </button>
+        </div>
+      </template>
+
+      <!-- ── Tab 4: Connector ── -->
+      <template v-else-if="selectedTab === 4">
+        <SectionLayout
+          :title="t('COMVOR_SETTINGS.SECTION.CONNECTOR.TITLE')"
+          :description="t('COMVOR_SETTINGS.SECTION.CONNECTOR.DESCRIPTION')"
+        >
+          <div class="flex flex-col gap-6">
+            <div>
+              <label class="text-sm font-medium text-n-slate-12 block mb-1">
+                {{ t('COMVOR_SETTINGS.CONNECTOR.TYPE_LABEL') }}
+              </label>
+              <select
+                v-model="connectorType"
+                class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+              >
+                <option value="none">{{ t('COMVOR_SETTINGS.CONNECTOR.TYPE_NONE') }}</option>
+                <option value="ewity">{{ t('COMVOR_SETTINGS.CONNECTOR.TYPE_EWITY') }}</option>
+              </select>
+            </div>
+
+            <template v-if="connectorType === 'ewity'">
+              <div>
+                <label class="text-sm font-medium text-n-slate-12 block mb-1">
+                  {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.TOKEN_LABEL') }}
+                </label>
+                <input
+                  v-model="ewityToken"
+                  type="password"
+                  :placeholder="t('COMVOR_SETTINGS.CONNECTOR.EWITY.TOKEN_PLACEHOLDER')"
+                  class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                />
+                <p v-if="ewityTokenHint && !ewityToken" class="mt-1 text-xs text-n-slate-11 font-mono">
+                  {{ ewityTokenHint }}
+                </p>
+                <p v-else class="mt-1 text-xs text-n-slate-11">
+                  {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.TOKEN_HINT') }}
+                </p>
+              </div>
+
+              <div>
+                <p class="text-sm font-medium text-n-slate-12 mb-2">
+                  {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.PERMISSIONS_LABEL') }}
+                </p>
+
+                <!-- search_products -->
+                <div class="mb-3">
+                  <div class="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      value="search_products"
+                      v-model="ewityPermissions"
+                      class="mt-0.5 w-4 h-4 accent-n-brand"
+                    />
+                    <span class="text-sm text-n-slate-12 flex-1">
+                      {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.PERM_SEARCH_PRODUCTS') }}
+                    </span>
+                    <button
+                      type="button"
+                      :disabled="permissionTestState['search_products'] === 'testing'"
+                      class="text-xs px-2 py-0.5 rounded border border-n-weak text-n-slate-11 hover:bg-n-alpha-1 disabled:opacity-50 shrink-0"
+                      @click="testPermission('search_products')"
+                    >
+                      {{ permissionTestState['search_products'] === 'testing'
+                          ? t('COMVOR_SETTINGS.CONNECTOR.EWITY.TESTING')
+                          : t('COMVOR_SETTINGS.CONNECTOR.EWITY.TEST') }}
+                    </button>
+                  </div>
+                  <p v-if="permissionTestState['search_products'] === 'ok'"
+                     class="mt-1 ml-6 text-xs text-green-600">
+                    ✓ {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.TEST_OK') }}
+                  </p>
+                  <p v-else-if="permissionTestState['search_products'] === 'error'"
+                     class="mt-1 ml-6 text-xs text-red-600">
+                    {{ permissionTestMessage['search_products'] }}
+                  </p>
+                </div>
+
+                <!-- get_product -->
+                <div>
+                  <div class="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      value="get_product"
+                      v-model="ewityPermissions"
+                      class="mt-0.5 w-4 h-4 accent-n-brand"
+                    />
+                    <span class="text-sm text-n-slate-12 flex-1">
+                      {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.PERM_GET_PRODUCT') }}
+                    </span>
+                    <button
+                      type="button"
+                      :disabled="permissionTestState['get_product'] === 'testing'"
+                      class="text-xs px-2 py-0.5 rounded border border-n-weak text-n-slate-11 hover:bg-n-alpha-1 disabled:opacity-50 shrink-0"
+                      @click="testPermission('get_product')"
+                    >
+                      {{ permissionTestState['get_product'] === 'testing'
+                          ? t('COMVOR_SETTINGS.CONNECTOR.EWITY.TESTING')
+                          : t('COMVOR_SETTINGS.CONNECTOR.EWITY.TEST') }}
+                    </button>
+                  </div>
+                  <p v-if="permissionTestState['get_product'] === 'ok'"
+                     class="mt-1 ml-6 text-xs text-green-600">
+                    ✓ {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.TEST_OK') }}
+                  </p>
+                  <p v-else-if="permissionTestState['get_product'] === 'error'"
+                     class="mt-1 ml-6 text-xs text-red-600">
+                    {{ permissionTestMessage['get_product'] }}
+                  </p>
+                </div>
+              </div>
+            </template>
+          </div>
+        </SectionLayout>
+
+        <div class="flex justify-end px-6 py-4">
+          <button
+            class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
+            :disabled="isSavingConnector"
+            @click="saveConnector"
+          >
+            {{ isSavingConnector
+                ? t('COMVOR_SETTINGS.CONNECTOR.EWITY.SAVING')
+                : t('COMVOR_SETTINGS.CONNECTOR.EWITY.SAVE') }}
+          </button>
+        </div>
+      </template>
 
     </template>
   </SettingsLayout>
