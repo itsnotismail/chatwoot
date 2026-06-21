@@ -139,6 +139,7 @@
         "TOKEN_PLACEHOLDER": "uat_...",
         "TOKEN_HINT": "Paste your Ewity API token. It is encrypted and stored securely.",
         "PERMISSIONS_LABEL": "Enabled permissions",
+        "TEST_REQUIRES_SAVE": "Save the connector with your API token to enable testing.",
         "PERM_SEARCH_PRODUCTS": "Search products — answer questions about stock and pricing",
         "PERM_GET_PRODUCT": "Get product details — answer questions about a specific product's description",
         "TEST": "Test",

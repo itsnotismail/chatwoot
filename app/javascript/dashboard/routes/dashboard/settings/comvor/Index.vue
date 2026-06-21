@@ -19,10 +19,11 @@ const isSaving = ref(false);
 const isSavingCards = ref(false);
 const selectedTab = ref(0);
 
+const EWITY_REQUIRED_PERMISSIONS = ['search_products', 'get_product'];
+
 const connectorType = ref('none');
 const ewityToken = ref('');
 const ewityTokenHint = ref('');
-const ewityPermissions = ref([]);
 const isSavingConnector = ref(false);
 const permissionTestState = ref({});
 const permissionTestMessage = ref({});
@@ -149,7 +150,6 @@ async function fetchSettings() {
         );
         if (ewityRes.ok) {
           const ewityData = await ewityRes.json();
-          ewityPermissions.value = ewityData.permissions || [];
           ewityTokenHint.value = ewityData.token_hint || '';
         }
       } catch (_) { /* non-fatal */ }
@@ -228,13 +228,23 @@ async function saveConnector() {
       body: JSON.stringify({ connector_type: connectorType.value }),
     });
     if (connectorType.value === 'ewity') {
-      const body = { permissions: ewityPermissions.value };
+      const body = { permissions: EWITY_REQUIRED_PERMISSIONS };
       if (ewityToken.value) body.api_token = ewityToken.value;
-      await fetch(`${engineURL()}/api/accounts/${accountId}/connectors/ewity`, {
+      const res = await fetch(`${engineURL()}/api/accounts/${accountId}/connectors/ewity`, {
         method: 'PUT',
         headers: authHeaders(),
         body: JSON.stringify(body),
       });
+      if (res.ok) {
+        const refreshed = await fetch(
+          `${engineURL()}/api/accounts/${accountId}/connectors/ewity`,
+          { headers: authHeaders() }
+        );
+        if (refreshed.ok) {
+          ewityTokenHint.value = (await refreshed.json()).token_hint || '';
+          ewityToken.value = '';
+        }
+      }
     }
     useAlert(t('COMVOR_SETTINGS.CONNECTOR.EWITY.SAVE_SUCCESS'));
   } catch (_) {
@@ -649,14 +659,17 @@ onMounted(fetchSettings);
                 <p class="text-sm font-medium text-n-slate-12 mb-2">
                   {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.PERMISSIONS_LABEL') }}
                 </p>
+                <p v-if="!ewityTokenHint" class="text-xs text-n-slate-11 mb-3">
+                  {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.TEST_REQUIRES_SAVE') }}
+                </p>
 
-                <!-- search_products -->
+                <!-- search_products (mandatory — always enabled) -->
                 <div class="mb-3">
                   <div class="flex items-start gap-2">
                     <input
                       type="checkbox"
-                      value="search_products"
-                      v-model="ewityPermissions"
+                      checked
+                      disabled
                       class="mt-0.5 w-4 h-4 accent-n-brand"
                     />
                     <span class="text-sm text-n-slate-12 flex-1">
@@ -664,7 +677,7 @@ onMounted(fetchSettings);
                     </span>
                     <button
                       type="button"
-                      :disabled="permissionTestState['search_products'] === 'testing'"
+                      :disabled="!ewityTokenHint || permissionTestState['search_products'] === 'testing'"
                       class="text-xs px-2 py-0.5 rounded border border-n-weak text-n-slate-11 hover:bg-n-alpha-1 disabled:opacity-50 shrink-0"
                       @click="testPermission('search_products')"
                     >
@@ -683,13 +696,13 @@ onMounted(fetchSettings);
                   </p>
                 </div>
 
-                <!-- get_product -->
+                <!-- get_product (mandatory — always enabled) -->
                 <div>
                   <div class="flex items-start gap-2">
                     <input
                       type="checkbox"
-                      value="get_product"
-                      v-model="ewityPermissions"
+                      checked
+                      disabled
                       class="mt-0.5 w-4 h-4 accent-n-brand"
                     />
                     <span class="text-sm text-n-slate-12 flex-1">
@@ -697,7 +710,7 @@ onMounted(fetchSettings);
                     </span>
                     <button
                       type="button"
-                      :disabled="permissionTestState['get_product'] === 'testing'"
+                      :disabled="!ewityTokenHint || permissionTestState['get_product'] === 'testing'"
                       class="text-xs px-2 py-0.5 rounded border border-n-weak text-n-slate-11 hover:bg-n-alpha-1 disabled:opacity-50 shrink-0"
                       @click="testPermission('get_product')"
                     >
