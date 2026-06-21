@@ -38,6 +38,9 @@ const ewityOptionalPermissions = ref([]);
 const isSavingConnector = ref(false);
 const permissionTestState = ref({});
 const permissionTestMessage = ref({});
+const permissionTestReason = ref({});
+const permissionGuideOpen = ref({});
+const tokenGuideOpen = ref(false);
 
 const TONE_OPTIONS = [
   { value: 'warm_friendly', label: t('COMVOR_SETTINGS.FIELDS.TONE.OPTIONS.WARM_FRIENDLY') },
@@ -280,6 +283,8 @@ async function testPermission(permission) {
   if (!engineURL()) return;
   permissionTestState.value[permission] = 'testing';
   permissionTestMessage.value[permission] = '';
+  permissionTestReason.value[permission] = '';
+  permissionGuideOpen.value[permission] = false;
   try {
     const body = { permission };
     if (ewityToken.value) body.api_token = ewityToken.value;
@@ -296,6 +301,7 @@ async function testPermission(permission) {
       permissionTestState.value[permission] = 'ok';
     } else {
       permissionTestState.value[permission] = 'error';
+      permissionTestReason.value[permission] = data.reason || 'unreachable';
       const reasonKey = {
         permission_denied: 'TEST_PERMISSION_DENIED',
         invalid_token: 'TEST_INVALID_TOKEN',
@@ -305,8 +311,13 @@ async function testPermission(permission) {
     }
   } catch (_) {
     permissionTestState.value[permission] = 'error';
+    permissionTestReason.value[permission] = 'unreachable';
     permissionTestMessage.value[permission] = t('COMVOR_SETTINGS.CONNECTOR.EWITY.TEST_UNREACHABLE');
   }
+}
+
+function togglePermissionGuide(permission) {
+  permissionGuideOpen.value[permission] = !permissionGuideOpen.value[permission];
 }
 
 onMounted(fetchSettings);
@@ -675,6 +686,16 @@ onMounted(fetchSettings);
                 <p v-else class="mt-1 text-xs text-n-slate-11">
                   {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.TOKEN_HINT') }}
                 </p>
+                <button
+                  type="button"
+                  class="mt-1 text-xs text-n-brand hover:underline"
+                  @click="tokenGuideOpen = !tokenGuideOpen"
+                >
+                  {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.TOKEN_GUIDE_LINK') }}
+                </button>
+                <p v-if="tokenGuideOpen" class="mt-1 text-xs text-n-slate-11 whitespace-pre-line">
+                  {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.TOKEN_GUIDE_STEPS') }}
+                </p>
               </div>
 
               <div>
@@ -712,10 +733,22 @@ onMounted(fetchSettings);
                      class="mt-1 ml-6 text-xs text-green-600">
                     ✓ {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.TEST_OK') }}
                   </p>
-                  <p v-else-if="permissionTestState[perm.key] === 'error'"
-                     class="mt-1 ml-6 text-xs text-red-600">
-                    {{ permissionTestMessage[perm.key] }}
-                  </p>
+                  <template v-else-if="permissionTestState[perm.key] === 'error'">
+                    <p class="mt-1 ml-6 text-xs text-red-600">
+                      {{ permissionTestMessage[perm.key] }}
+                      <button
+                        v-if="permissionTestReason[perm.key] === 'permission_denied'"
+                        type="button"
+                        class="ml-1 text-n-brand hover:underline"
+                        @click="togglePermissionGuide(perm.key)"
+                      >
+                        {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.PERMISSION_GUIDE_LINK') }}
+                      </button>
+                    </p>
+                    <p v-if="permissionGuideOpen[perm.key]" class="mt-1 ml-6 text-xs text-n-slate-11 whitespace-pre-line">
+                      {{ t('COMVOR_SETTINGS.CONNECTOR.EWITY.PERMISSION_GUIDE_STEPS') }}
+                    </p>
+                  </template>
                 </div>
               </div>
             </template>
