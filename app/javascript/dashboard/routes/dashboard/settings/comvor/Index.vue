@@ -237,11 +237,18 @@ async function saveConnector() {
   if (!engineURL()) return;
   isSavingConnector.value = true;
   try {
-    await fetch(`${engineURL()}/api/accounts/${accountId}`, {
+    // Send the full form alongside connector_type — this PUT endpoint does a
+    // full-replace of profile fields, so a connector_type-only body would
+    // wipe agent_name, business_name, etc. back to empty.
+    const res = await fetch(`${engineURL()}/api/accounts/${accountId}`, {
       method: 'PUT',
       headers: authHeaders(),
-      body: JSON.stringify({ connector_type: connectorType.value }),
+      body: JSON.stringify({ ...form.value, connector_type: connectorType.value }),
     });
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || `HTTP ${res.status}`);
+    }
     if (connectorType.value === 'ewity') {
       const body = { permissions: [...EWITY_REQUIRED_PERMISSIONS, ...ewityOptionalPermissions.value] };
       if (ewityToken.value) body.api_token = ewityToken.value;
@@ -262,8 +269,8 @@ async function saveConnector() {
       }
     }
     useAlert(t('COMVOR_SETTINGS.CONNECTOR.EWITY.SAVE_SUCCESS'));
-  } catch (_) {
-    useAlert(t('COMVOR_SETTINGS.CONNECTOR.EWITY.SAVE_ERROR'));
+  } catch (e) {
+    useAlert(e.message || t('COMVOR_SETTINGS.CONNECTOR.EWITY.SAVE_ERROR'));
   } finally {
     isSavingConnector.value = false;
   }
