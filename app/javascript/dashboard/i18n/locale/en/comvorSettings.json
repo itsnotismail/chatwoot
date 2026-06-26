@@ -8,6 +8,27 @@
     "SAVE_SUCCESS": "Settings saved successfully.",
     "SAVE_ERROR": "Failed to save settings. Please try again.",
     "FETCH_ERROR": "Failed to load settings. Please refresh the page.",
+    "ONBOARDING": {
+      "TITLE": "Set up Comvor for this account",
+      "DESCRIPTION": "Tell us a bit about this business to get started. You can change most of this later — the business type is permanent.",
+      "CATEGORY": {
+        "LABEL": "Business type",
+        "OPTIONS": {
+          "RETAIL": "Retail"
+        }
+      },
+      "BUSINESS_NAME": {
+        "LABEL": "Business name",
+        "PLACEHOLDER": "Acme Goods"
+      },
+      "BUSINESS_DESCRIPTION": {
+        "LABEL": "What does this business do?",
+        "PLACEHOLDER": "We sell handmade soap online and in our Malé store."
+      },
+      "SUBMIT": "Get started",
+      "SUBMITTING": "Setting up...",
+      "ERROR": "Something went wrong setting up this account. Please try again."
+    },
     "TABS": {
       "PROFILE": "Profile",
       "POLICIES": "Policies",
