@@ -34,6 +34,7 @@ RUN apk update && apk add --no-cache \
   git \
   curl \
   xz \
+  libc6-compat \
   && mkdir -p /var/app \
   && gem install bundler -v "$BUNDLER_VERSION"
 
@@ -58,12 +59,11 @@ WORKDIR /app
 
 COPY Gemfile Gemfile.lock ./
 
-# natively compile grpc and protobuf to support alpine musl (dialogflow-docker workflow)
-# https://github.com/googleapis/google-cloud-ruby/issues/13306
-# adding xz as nokogiri was failing to build libxml
-# https://github.com/chatwoot/chatwoot/issues/4045
+# Build deps for native gem compilation (some gems still need it even with binaries).
+# force_ruby_platform removed: grpc/google-cloud-storage have x86_64-linux binaries and
+# compiling from source hangs indefinitely in Docker Desktop on macOS (moby#45929).
+# Build with --platform linux/amd64 so bundler resolves x86_64-linux binary gems.
 RUN apk update && apk add --no-cache build-base musl ruby-full ruby-dev gcc make musl-dev openssl openssl-dev g++ linux-headers xz vips
-RUN bundle config set --local force_ruby_platform true
 
 # Do not install development or test gems in production
 RUN if [ "$RAILS_ENV" = "production" ]; then \
@@ -113,9 +113,6 @@ ENV EXECJS_RUNTIME ${EXECJS_RUNTIME}
 ARG RAILS_SERVE_STATIC_FILES=true
 ENV RAILS_SERVE_STATIC_FILES ${RAILS_SERVE_STATIC_FILES}
 
-ARG BUNDLE_FORCE_RUBY_PLATFORM=1
-ENV BUNDLE_FORCE_RUBY_PLATFORM ${BUNDLE_FORCE_RUBY_PLATFORM}
-
 ARG RAILS_ENV=production
 ENV RAILS_ENV ${RAILS_ENV}
 ENV BUNDLE_PATH="/gems"
@@ -128,6 +125,7 @@ RUN apk update && apk add --no-cache \
   imagemagick \
   git \
   vips \
+  libc6-compat \
   && gem install bundler -v "$BUNDLER_VERSION"
 
 COPY --from=node /usr/local/bin/node /usr/local/bin/
