@@ -8,6 +8,12 @@
     "SAVE_SUCCESS": "Settings saved successfully.",
     "SAVE_ERROR": "Failed to save settings. Please try again.",
     "FETCH_ERROR": "Failed to load settings. Please refresh the page.",
+    "COMMON": {
+      "CHAR_COUNT": "{count}/{max}",
+      "CHAR_COUNT_WITH_HINT": "{count}/{max} — {hint}",
+      "REMOVE_ICON": "✕",
+      "CHECK_ICON": "✓"
+    },
     "ONBOARDING": {
       "TITLE": "Set up Comvor for this account",
       "DESCRIPTION": "Tell us a bit about this business to get started. You can change most of this later — the business type is permanent.",
