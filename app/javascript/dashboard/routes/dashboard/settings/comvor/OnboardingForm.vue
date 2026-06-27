@@ -113,9 +113,9 @@ async function submit() {
 
     <p v-if="error" class="text-sm text-n-ruby-9">{{ error }}</p>
 
-    <woot-button
+    <button
+      class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
       :disabled="!canSubmit"
-      :is-loading="submitting"
       @click="submit"
     >
       {{
@@ -123,6 +123,6 @@ async function submit() {
           ? t('COMVOR_SETTINGS.ONBOARDING.SUBMITTING')
           : t('COMVOR_SETTINGS.ONBOARDING.SUBMIT')
       }}
-    </woot-button>
+    </button>
   </div>
 </template>
