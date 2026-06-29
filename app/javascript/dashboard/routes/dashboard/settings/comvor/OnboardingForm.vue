@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
@@ -10,7 +10,8 @@ const props = defineProps({
 const emit = defineEmits(['provisioned']);
 const { t } = useI18n();
 
-const businessCategory = ref('retail');
+const businessCategory = ref('');
+const verticals = ref([]);
 const businessName = ref('');
 const businessDescription = ref('');
 const submitting = ref(false);
@@ -23,6 +24,19 @@ const canSubmit = computed(
     businessDescription.value.trim() &&
     !submitting.value
 );
+
+async function fetchVerticals() {
+  try {
+    const res = await fetch(`${props.engineUrl}/api/verticals`, {
+      headers: props.authHeaders(),
+    });
+    if (res.ok) verticals.value = await res.json();
+  } catch (_) {
+    /* non-fatal: dropdown falls back to empty until retry */
+  }
+}
+
+onMounted(fetchVerticals);
 
 async function submit() {
   submitting.value = true;
@@ -77,8 +91,8 @@ async function submit() {
         v-model="businessCategory"
         class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
       >
-        <option value="retail">
-          {{ t('COMVOR_SETTINGS.ONBOARDING.CATEGORY.OPTIONS.RETAIL') }}
+        <option v-for="v in verticals" :key="v.key" :value="v.key">
+          {{ v.display_name }}
         </option>
       </select>
     </label>
