@@ -100,6 +100,9 @@ const activeVertical = computed(
   () => verticals.value.find(v => v.key === businessCategory.value) || null
 );
 const policyFields = computed(() => activeVertical.value?.policy_fields || []);
+const compatibleConnectors = computed(
+  () => activeVertical.value?.compatible_connectors || ['none']
+);
 
 const form = ref({
   agent_name: '',
@@ -990,10 +993,10 @@ onMounted(fetchSettings);
                 v-model="connectorType"
                 class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
               >
-                <option value="none">
+                <option v-if="compatibleConnectors.includes('none')" value="none">
                   {{ t('COMVOR_SETTINGS.CONNECTOR.TYPE_NONE') }}
                 </option>
-                <option value="ewity">
+                <option v-if="compatibleConnectors.includes('ewity')" value="ewity">
                   {{ t('COMVOR_SETTINGS.CONNECTOR.TYPE_EWITY') }}
                 </option>
               </select>
