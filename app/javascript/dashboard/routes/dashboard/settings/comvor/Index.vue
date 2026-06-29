@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useStore } from 'vuex';
 import { useRoute } from 'vue-router';
@@ -93,13 +93,13 @@ const AVOID_CHIPS = [
   },
 ];
 
-const POLICY_LIMITS = {
-  purchasing_info: 800,
-  payment_methods: 400,
-  shipping_delivery: 800,
-  promotions: 1000,
-  returns_exchanges: 1000,
-};
+const verticals = ref([]);
+const businessCategory = ref('retail');
+
+const activeVertical = computed(
+  () => verticals.value.find(v => v.key === businessCategory.value) || null
+);
+const policyFields = computed(() => activeVertical.value?.policy_fields || []);
 
 const form = ref({
   agent_name: '',
@@ -113,13 +113,7 @@ const form = ref({
   operating_hours: '',
   timezone: '',
   currency: '',
-  policies: {
-    purchasing_info: '',
-    payment_methods: '',
-    shipping_delivery: '',
-    promotions: '',
-    returns_exchanges: '',
-  },
+  policies: {},
   instruction_modules: {
     lead_collection: {
       enabled: false,
@@ -150,14 +144,18 @@ async function fetchSettings() {
   if (!engineURL()) return;
   isLoading.value = true;
   try {
-    const [accRes, cardsRes] = await Promise.all([
+    const [accRes, cardsRes, verticalsRes] = await Promise.all([
       fetch(`${engineURL()}/api/accounts/${accountId}`, {
         headers: authHeaders(),
       }),
       fetch(`${engineURL()}/api/accounts/${accountId}/knowledge-cards`, {
         headers: authHeaders(),
       }),
+      fetch(`${engineURL()}/api/verticals`, {
+        headers: authHeaders(),
+      }),
     ]);
+    if (verticalsRes.ok) verticals.value = await verticalsRes.json();
     if (accRes.status === 404) {
       provisioned.value = false;
       return;
@@ -165,6 +163,7 @@ async function fetchSettings() {
     if (!accRes.ok) throw new Error(`account HTTP ${accRes.status}`);
 
     const data = await accRes.json();
+    businessCategory.value = data.business_category || 'retail';
     form.value = {
       agent_name: data.agent_name || '',
       brand_voice: data.brand_voice || 'warm_friendly',
@@ -177,13 +176,13 @@ async function fetchSettings() {
       operating_hours: data.operating_hours || '',
       timezone: data.timezone || '',
       currency: data.currency || '',
-      policies: {
-        purchasing_info: data.policies?.purchasing_info || '',
-        payment_methods: data.policies?.payment_methods || '',
-        shipping_delivery: data.policies?.shipping_delivery || '',
-        promotions: data.policies?.promotions || '',
-        returns_exchanges: data.policies?.returns_exchanges || '',
-      },
+      policies: Object.fromEntries(
+        (
+          verticals.value.find(
+            v => v.key === (data.business_category || 'retail')
+          )?.policy_fields || []
+        ).map(f => [f.key, data.policies?.[f.key] || ''])
+      ),
       instruction_modules: {
         lead_collection: {
           enabled: data.instruction_modules?.lead_collection?.enabled || false,
@@ -678,27 +677,19 @@ onMounted(fetchSettings);
         >
           <div class="flex flex-col gap-4">
             <label
-              v-for="(policy, key) in form.policies"
-              :key="key"
+              v-for="field in policyFields"
+              :key="field.key"
               class="flex flex-col gap-1"
             >
               <span class="text-sm font-medium text-n-slate-12">
-                {{
-                  t(
-                    `COMVOR_SETTINGS.FIELDS.POLICIES.${key.toUpperCase()}.LABEL`
-                  )
-                }}
+                {{ field.label }}
               </span>
               <textarea
-                v-model="form.policies[key]"
+                v-model="form.policies[field.key]"
                 rows="3"
-                :maxlength="POLICY_LIMITS[key]"
+                :maxlength="field.char_limit"
                 class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-                :placeholder="
-                  t(
-                    `COMVOR_SETTINGS.FIELDS.POLICIES.${key.toUpperCase()}.PLACEHOLDER`
-                  )
-                "
+                :placeholder="field.placeholder"
               />
             </label>
           </div>
