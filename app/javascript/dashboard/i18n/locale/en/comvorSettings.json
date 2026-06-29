@@ -113,28 +113,6 @@
         "LABEL": "Operating Hours",
         "PLACEHOLDER": "E.g. Mon–Fri 9am–6pm, always open online"
       },
-      "POLICIES": {
-        "PURCHASING_INFO": {
-          "LABEL": "How to order / book",
-          "PLACEHOLDER": "E.g. Send us the product details, your delivery address, and contact number via WhatsApp or Instagram. Or book via our website."
-        },
-        "PAYMENT_METHODS": {
-          "LABEL": "Payment methods",
-          "PLACEHOLDER": "E.g. We accept bank transfer and cash on delivery."
-        },
-        "SHIPPING_DELIVERY": {
-          "LABEL": "Delivery / service area",
-          "PLACEHOLDER": "E.g. Free delivery within Male. Orders before 6pm shipped same day. We serve the greater Dubai area."
-        },
-        "PROMOTIONS": {
-          "LABEL": "Promotions & discounts",
-          "PLACEHOLDER": "E.g. 10% off for first-time customers with code WELCOME10."
-        },
-        "RETURNS_EXCHANGES": {
-          "LABEL": "Returns & exchanges",
-          "PLACEHOLDER": "E.g. Factory defects can be exchanged within 24 hours of delivery."
-        }
-      },
       "KNOWLEDGE_CARDS": {
         "ADD_BUTTON": "Add card",
         "TITLE_PLACEHOLDER": "E.g. Warranty, Age guidelines, Gift wrapping",
