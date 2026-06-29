@@ -993,10 +993,16 @@ onMounted(fetchSettings);
                 v-model="connectorType"
                 class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
               >
-                <option v-if="compatibleConnectors.includes('none')" value="none">
+                <option
+                  v-if="compatibleConnectors.includes('none')"
+                  value="none"
+                >
                   {{ t('COMVOR_SETTINGS.CONNECTOR.TYPE_NONE') }}
                 </option>
-                <option v-if="compatibleConnectors.includes('ewity')" value="ewity">
+                <option
+                  v-if="compatibleConnectors.includes('ewity')"
+                  value="ewity"
+                >
                   {{ t('COMVOR_SETTINGS.CONNECTOR.TYPE_EWITY') }}
                 </option>
               </select>
