@@ -1,5 +1,5 @@
 <script setup>
-import { reactive } from 'vue';
+import { reactive, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
@@ -12,14 +12,20 @@ const emit = defineEmits(['update:stage']);
 const { t } = useI18n();
 
 const stageEdits = reactive({});
-props.flow.stages.forEach(stage => {
-  stageEdits[stage.stage_key] = {
-    action_mode: stage.action_mode || 'auto',
-    on_complete: stage.on_complete,
-    guidance: stage.guidance,
-    skipped: !!stage.skipped,
-  };
-});
+watch(
+  () => props.flow,
+  flow => {
+    flow.stages.forEach(stage => {
+      stageEdits[stage.stage_key] = {
+        action_mode: stage.action_mode || 'auto',
+        on_complete: stage.on_complete,
+        guidance: stage.guidance,
+        skipped: !!stage.skipped,
+      };
+    });
+  },
+  { immediate: true }
+);
 
 function wallFor(stageKey) {
   return props.walls.find(

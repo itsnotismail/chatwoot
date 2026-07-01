@@ -108,4 +108,51 @@ describe('FlowEditor.vue', () => {
       rows[1].find('select[data-testid="action-mode-select"]').exists()
     ).toBe(true);
   });
+
+  it('re-seeds local state and does not crash when the flow prop is replaced with a new stage', async () => {
+    const initialFlow = {
+      flow_key: 'sales',
+      mode: 'ordered',
+      stages: [
+        {
+          stage_key: 'discovery',
+          guidance: 'greet',
+          action_tool: '',
+          on_complete: 'continue',
+          in_scope: true,
+        },
+      ],
+    };
+    const wrapper = mountEditor({ flow: initialFlow, walls: [] });
+
+    const reloadedFlow = {
+      flow_key: 'sales',
+      mode: 'ordered',
+      stages: [
+        {
+          stage_key: 'confirmation',
+          guidance: 'confirm',
+          action_tool: '',
+          on_complete: 'continue',
+          in_scope: true,
+        },
+      ],
+    };
+
+    await expect(
+      wrapper.setProps({ flow: reloadedFlow })
+    ).resolves.not.toThrow();
+
+    const select = wrapper.find('select[data-testid="on-complete-select"]');
+    await expect(select.setValue('handoff')).resolves.not.toThrow();
+
+    const emitted = wrapper.emitted('update:stage');
+    expect(emitted).toBeTruthy();
+    const lastEvent = emitted[emitted.length - 1][0];
+    expect(lastEvent).toMatchObject({
+      flow_key: 'sales',
+      stage_key: 'confirmation',
+      on_complete: 'handoff',
+    });
+  });
 });
