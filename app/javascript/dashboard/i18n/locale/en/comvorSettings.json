@@ -53,6 +53,13 @@
       "SAVE_SUCCESS": "Discovery flow draft saved.",
       "SAVE_ERROR": "Failed to save discovery flow draft. Please try again.",
       "UNSAVED_CHANGES": "You have unsaved changes.",
+      "PUBLISH": "Publish",
+      "PUBLISHING": "Publishing...",
+      "PUBLISH_SUCCESS": "Discovery flow published.",
+      "PUBLISH_ERROR": "Failed to publish discovery flow. Please try again.",
+      "PUBLISH_DISABLED_UNSAVED_HINT": "Save your changes before publishing.",
+      "PUBLISH_HARD_ERRORS_TITLE": "This flow can't be published yet:",
+      "PUBLISH_SOFT_WARNINGS_TITLE": "Warnings",
       "POLICY": {
         "TITLE": "Policy",
         "DEBOUNCE_MS": "debounce_ms",

@@ -20,11 +20,14 @@ const isLoading = ref(false);
 const isSaving = ref(false);
 const isSavingConnectors = ref(false);
 const isSavingNotifications = ref(false);
+const isPublishing = ref(false);
 const flowConfig = ref(null);
 const connectors = ref(null);
 const notifications = ref(null);
 const draftStages = ref({});
 const hasUnsavedChanges = ref(false);
+const hardErrors = ref([]);
+const softWarnings = ref([]);
 
 function authHeaders() {
   const token = store.getters.getCurrentUser?.access_token || '';
@@ -125,11 +128,42 @@ async function saveDraft() {
     await loadAll();
     draftStages.value = {};
     hasUnsavedChanges.value = false;
+    hardErrors.value = [];
+    softWarnings.value = [];
     useAlert(t('COMVOR_SETTINGS.DISCOVERY.SAVE_SUCCESS'));
   } catch (e) {
     useAlert(e.message || t('COMVOR_SETTINGS.DISCOVERY.SAVE_ERROR'));
   } finally {
     isSaving.value = false;
+  }
+}
+
+async function publish() {
+  if (!props.engineUrl || hasUnsavedChanges.value) return;
+  isPublishing.value = true;
+  try {
+    const res = await fetch(url('/flow-config/publish'), {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    if (res.status === 422) {
+      const body = await res.json();
+      hardErrors.value = body.hard_errors || [];
+      softWarnings.value = body.soft_warnings || [];
+      return;
+    }
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || `HTTP ${res.status}`);
+    }
+    await loadAll();
+    hardErrors.value = [];
+    softWarnings.value = [];
+    useAlert(t('COMVOR_SETTINGS.DISCOVERY.PUBLISH_SUCCESS'));
+  } catch (e) {
+    useAlert(e.message || t('COMVOR_SETTINGS.DISCOVERY.PUBLISH_ERROR'));
+  } finally {
+    isPublishing.value = false;
   }
 }
 
@@ -161,7 +195,17 @@ async function saveNotifications() {
 }
 
 onMounted(loadAll);
-defineExpose({ loadAll, saveDraft, saveConnectors, saveNotifications });
+defineExpose({
+  loadAll,
+  saveDraft,
+  saveConnectors,
+  saveNotifications,
+  publish,
+  flowConfig,
+  hardErrors,
+  softWarnings,
+  hasUnsavedChanges,
+});
 </script>
 
 <template>
@@ -176,6 +220,34 @@ defineExpose({ loadAll, saveDraft, saveConnectors, saveNotifications });
           class="text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700"
           >{{ flowConfig.status }}</span
         >
+      </div>
+
+      <div
+        v-if="hardErrors.length"
+        class="border border-red-300 bg-red-50 dark:bg-red-900/30 dark:border-red-700 rounded-md p-3 text-sm text-red-700 dark:text-red-300"
+      >
+        <h4 class="font-semibold mb-2">
+          {{ t('COMVOR_SETTINGS.DISCOVERY.PUBLISH_HARD_ERRORS_TITLE') }}
+        </h4>
+        <ul class="list-disc list-inside">
+          <li v-for="(err, idx) in hardErrors" :key="idx">
+            {{ err.message }}
+          </li>
+        </ul>
+      </div>
+
+      <div
+        v-if="softWarnings.length"
+        class="border border-amber-300 bg-amber-50 dark:bg-amber-900/30 dark:border-amber-700 rounded-md p-3 text-sm text-amber-700 dark:text-amber-300"
+      >
+        <h4 class="font-semibold mb-2">
+          {{ t('COMVOR_SETTINGS.DISCOVERY.PUBLISH_SOFT_WARNINGS_TITLE') }}
+        </h4>
+        <ul class="list-disc list-inside">
+          <li v-for="(warn, idx) in softWarnings" :key="idx">
+            {{ warn.capability }} — {{ warn.message }}
+          </li>
+        </ul>
       </div>
 
       <div
@@ -208,6 +280,23 @@ defineExpose({ loadAll, saveDraft, saveConnectors, saveNotifications });
         <span v-if="hasUnsavedChanges" class="text-xs text-amber-600">
           {{ t('COMVOR_SETTINGS.DISCOVERY.UNSAVED_CHANGES') }}
         </span>
+        <woot-button
+          variant="clear"
+          :is-loading="isPublishing"
+          :disabled="hasUnsavedChanges"
+          :title="
+            hasUnsavedChanges
+              ? t('COMVOR_SETTINGS.DISCOVERY.PUBLISH_DISABLED_UNSAVED_HINT')
+              : null
+          "
+          @click="publish"
+        >
+          {{
+            isPublishing
+              ? t('COMVOR_SETTINGS.DISCOVERY.PUBLISHING')
+              : t('COMVOR_SETTINGS.DISCOVERY.PUBLISH')
+          }}
+        </woot-button>
         <woot-button :is-loading="isSaving" @click="saveDraft">
           {{
             isSaving

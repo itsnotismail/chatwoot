@@ -51,10 +51,22 @@ const flowConfig = {
   soft_warnings: [],
 };
 
-function mockFetch() {
-  global.fetch = vi.fn(url => {
+function mockFetch({ publishResponse } = {}) {
+  let currentStatus = 'defaults';
+  global.fetch = vi.fn((url, opts) => {
+    if (url.endsWith('/flow-config/publish') && opts?.method === 'POST') {
+      if (publishResponse) return Promise.resolve(publishResponse);
+      currentStatus = 'published';
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ ...flowConfig, status: currentStatus }),
+        text: () => Promise.resolve(''),
+      });
+    }
     let body = {};
-    if (url.endsWith('/flow-config')) body = flowConfig;
+    if (url.endsWith('/flow-config'))
+      body = { ...flowConfig, status: currentStatus };
     else if (url.endsWith('/connectors'))
       body = { enabled: [], providers: {}, available: ['ewity'] };
     else if (url.endsWith('/notifications'))
@@ -118,5 +130,74 @@ describe('DiscoveryFlowTab.vue', () => {
     expect(body.policy).toMatchObject(flowConfig.policy);
     // fetched all three endpoints on mount, plus the PUT and the reload-all after save
     expect(global.fetch).toHaveBeenCalledTimes(7);
+  });
+
+  it('publish 422 renders hard-error messages inline and does not flip status', async () => {
+    mockFetch({
+      publishResponse: {
+        ok: false,
+        status: 422,
+        json: () =>
+          Promise.resolve({
+            hard_errors: [
+              {
+                flow_key: 'sales',
+                stage_key: 'order_drafting',
+                capability: 'order.draft',
+                kind: 'hard',
+                message: 'no connector provides order.draft',
+              },
+            ],
+            soft_warnings: [],
+          }),
+        text: () => Promise.resolve(''),
+      },
+    });
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    await wrapper.vm.publish();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('no connector provides order.draft');
+    expect(wrapper.vm.flowConfig.status).toBe('defaults');
+
+    const publishCall = global.fetch.mock.calls.find(call =>
+      call[0].endsWith('/flow-config/publish')
+    );
+    expect(publishCall[1].method).toBe('POST');
+  });
+
+  it('publish 200 flips status to published and clears prior errors', async () => {
+    mockFetch();
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    // seed a prior hard-error panel (distinct message from the fixture's
+    // per-stage wall) to verify the container-level panel gets cleared.
+    wrapper.vm.hardErrors = [
+      {
+        flow_key: 'sales',
+        stage_key: 'order_drafting',
+        capability: 'order.draft',
+        kind: 'hard',
+        message: 'PRIOR_PUBLISH_HARD_ERROR',
+      },
+    ];
+    await wrapper.vm.$nextTick();
+    expect(wrapper.text()).toContain('PRIOR_PUBLISH_HARD_ERROR');
+
+    await wrapper.vm.publish();
+    await flushPromises();
+
+    expect(wrapper.vm.flowConfig.status).toBe('published');
+    expect(wrapper.text()).toContain('published');
+    expect(wrapper.text()).not.toContain('PRIOR_PUBLISH_HARD_ERROR');
   });
 });
