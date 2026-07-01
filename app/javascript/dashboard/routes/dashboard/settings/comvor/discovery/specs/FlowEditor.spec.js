@@ -72,6 +72,30 @@ describe('FlowEditor.vue', () => {
     });
   });
 
+  it('preserves an earlier field edit when a second field on the same stage changes', async () => {
+    const wrapper = mountEditor();
+    const guidanceTextareas = wrapper.findAll(
+      'textarea[data-testid="guidance-textarea"]'
+    );
+    const selects = wrapper.findAll('select[data-testid="on-complete-select"]');
+    // discovery stage is the first, not walled
+    const discoveryGuidance = guidanceTextareas[0];
+    const discoverySelect = selects[0];
+
+    await discoveryGuidance.setValue('updated guidance');
+    await discoverySelect.setValue('handoff');
+
+    const emitted = wrapper.emitted('update:stage');
+    expect(emitted).toBeTruthy();
+    const lastEvent = emitted[emitted.length - 1][0];
+    expect(lastEvent).toMatchObject({
+      flow_key: 'sales',
+      stage_key: 'discovery',
+      guidance: 'updated guidance',
+      on_complete: 'handoff',
+    });
+  });
+
   it('only renders the action-mode select when the stage has an action_tool or an action wall', () => {
     const wrapper = mountEditor();
     const rows = wrapper.findAll('[data-testid="stage-row"]');

@@ -1,4 +1,5 @@
 <script setup>
+import { reactive } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
@@ -9,6 +10,16 @@ const props = defineProps({
 const emit = defineEmits(['update:stage']);
 
 const { t } = useI18n();
+
+const stageEdits = reactive({});
+props.flow.stages.forEach(stage => {
+  stageEdits[stage.stage_key] = {
+    action_mode: stage.action_mode || 'auto',
+    on_complete: stage.on_complete,
+    guidance: stage.guidance,
+    skipped: !!stage.skipped,
+  };
+});
 
 function wallFor(stageKey) {
   return props.walls.find(
@@ -21,14 +32,12 @@ function showsActionMode(stage) {
 }
 
 function onFieldChange(stage, field, value) {
+  const edited = stageEdits[stage.stage_key];
+  edited[field] = value;
   emit('update:stage', {
     flow_key: props.flow.flow_key,
     stage_key: stage.stage_key,
-    action_mode: stage.action_mode || 'auto',
-    on_complete: stage.on_complete,
-    guidance: stage.guidance,
-    skipped: !!stage.skipped,
-    [field]: value,
+    ...edited,
   });
 }
 </script>
@@ -57,7 +66,7 @@ function onFieldChange(stage, field, value) {
         }}</span>
         <select
           data-testid="on-complete-select"
-          :value="stage.on_complete"
+          :value="stageEdits[stage.stage_key].on_complete"
           :disabled="!!wallFor(stage.stage_key)"
           class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
           @change="onFieldChange(stage, 'on_complete', $event.target.value)"
@@ -80,7 +89,7 @@ function onFieldChange(stage, field, value) {
         }}</span>
         <textarea
           data-testid="guidance-textarea"
-          :value="stage.guidance"
+          :value="stageEdits[stage.stage_key].guidance"
           :disabled="!!wallFor(stage.stage_key)"
           rows="2"
           class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
@@ -94,7 +103,7 @@ function onFieldChange(stage, field, value) {
         }}</span>
         <select
           data-testid="action-mode-select"
-          :value="stage.action_mode || 'auto'"
+          :value="stageEdits[stage.stage_key].action_mode"
           :disabled="!!wallFor(stage.stage_key)"
           class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
           @change="onFieldChange(stage, 'action_mode', $event.target.value)"
@@ -112,7 +121,7 @@ function onFieldChange(stage, field, value) {
         <input
           data-testid="skipped-checkbox"
           type="checkbox"
-          :checked="!!stage.skipped"
+          :checked="stageEdits[stage.stage_key].skipped"
           :disabled="!!wallFor(stage.stage_key)"
           class="w-4 h-4 accent-n-brand"
           @change="onFieldChange(stage, 'skipped', $event.target.checked)"
