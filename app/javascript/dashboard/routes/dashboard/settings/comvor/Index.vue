@@ -8,6 +8,7 @@ import SettingsLayout from '../SettingsLayout.vue';
 import BaseSettingsHeader from '../components/BaseSettingsHeader.vue';
 import SectionLayout from '../account/components/SectionLayout.vue';
 import OnboardingForm from './OnboardingForm.vue';
+import DiscoveryFlowTab from './discovery/DiscoveryFlowTab.vue';
 
 const { t } = useI18n();
 const store = useStore();
@@ -462,6 +463,12 @@ onMounted(fetchSettings);
         <woot-tabs-item
           :index="4"
           :name="t('COMVOR_SETTINGS.TABS.CONNECTOR')"
+          :show-badge="false"
+          is-compact
+        />
+        <woot-tabs-item
+          :index="5"
+          :name="t('COMVOR_SETTINGS.TABS.DISCOVERY')"
           :show-badge="false"
           is-compact
         />
@@ -1149,6 +1156,14 @@ onMounted(fetchSettings);
             }}
           </button>
         </div>
+      </template>
+
+      <!-- ── Tab 5: Discovery Flow ── -->
+      <template v-else-if="selectedTab === 5">
+        <DiscoveryFlowTab
+          :account-id="String(accountId)"
+          :engine-url="engineURL()"
+        />
       </template>
     </template>
   </SettingsLayout>

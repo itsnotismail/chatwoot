@@ -40,7 +40,19 @@
       "POLICIES": "Policies",
       "KNOWLEDGE": "Knowledge",
       "INSTRUCTIONS": "Instructions",
-      "CONNECTOR": "Connector"
+      "CONNECTOR": "Connector",
+      "DISCOVERY": "Discovery Flow"
+    },
+    "DISCOVERY": {
+      "STATUS": "Status",
+      "IN_SCOPE": "In scope",
+      "OUT_OF_SCOPE": "Out of scope",
+      "ON_COMPLETE_ARROW": "→",
+      "POLICY": {
+        "TITLE": "Policy",
+        "DEBOUNCE_MS": "debounce_ms",
+        "IDLE_TERMINAL": "idle_terminal"
+      }
     },
     "SECTION": {
       "IDENTITY": {
