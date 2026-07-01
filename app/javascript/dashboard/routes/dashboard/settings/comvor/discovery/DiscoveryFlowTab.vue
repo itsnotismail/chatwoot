@@ -6,6 +6,7 @@ import { useAlert } from 'dashboard/composables';
 import FlowEditor from './FlowEditor.vue';
 import LifecyclePolicyEditor from './LifecyclePolicyEditor.vue';
 import ConnectorsEditor from './ConnectorsEditor.vue';
+import NotificationsEditor from './NotificationsEditor.vue';
 
 const props = defineProps({
   accountId: { type: String, required: true },
@@ -18,6 +19,7 @@ const store = useStore();
 const isLoading = ref(false);
 const isSaving = ref(false);
 const isSavingConnectors = ref(false);
+const isSavingNotifications = ref(false);
 const flowConfig = ref(null);
 const connectors = ref(null);
 const notifications = ref(null);
@@ -67,6 +69,10 @@ function onPolicyUpdate(policy) {
 
 function onConnectorsUpdate(update) {
   connectors.value = { ...connectors.value, ...update };
+}
+
+function onNotificationsUpdate(update) {
+  notifications.value = { ...notifications.value, ...update };
 }
 
 async function saveConnectors() {
@@ -127,8 +133,35 @@ async function saveDraft() {
   }
 }
 
+async function saveNotifications() {
+  if (!props.engineUrl) return;
+  isSavingNotifications.value = true;
+  try {
+    const res = await fetch(url('/notifications'), {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        channels: notifications.value.channels,
+        subscriptions: notifications.value.subscriptions,
+      }),
+    });
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || `HTTP ${res.status}`);
+    }
+    await loadAll();
+    useAlert(t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SAVE_SUCCESS'));
+  } catch (e) {
+    useAlert(
+      e.message || t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SAVE_ERROR')
+    );
+  } finally {
+    isSavingNotifications.value = false;
+  }
+}
+
 onMounted(loadAll);
-defineExpose({ loadAll, saveDraft, saveConnectors });
+defineExpose({ loadAll, saveDraft, saveConnectors, saveNotifications });
 </script>
 
 <template>
@@ -198,6 +231,28 @@ defineExpose({ loadAll, saveDraft, saveConnectors });
               isSavingConnectors
                 ? t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVING')
                 : t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE')
+            }}
+          </woot-button>
+        </div>
+      </div>
+
+      <div v-if="notifications" class="border rounded-md p-3 text-sm">
+        <h4 class="font-semibold mb-2">
+          {{ t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.TITLE') }}
+        </h4>
+        <NotificationsEditor
+          :notifications="notifications"
+          @update:notifications="onNotificationsUpdate"
+        />
+        <div class="flex items-center justify-end gap-3 px-1 py-2">
+          <woot-button
+            :is-loading="isSavingNotifications"
+            @click="saveNotifications"
+          >
+            {{
+              isSavingNotifications
+                ? t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SAVING')
+                : t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SAVE')
             }}
           </woot-button>
         </div>
