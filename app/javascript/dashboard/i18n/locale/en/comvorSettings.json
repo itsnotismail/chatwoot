@@ -56,7 +56,14 @@
       "POLICY": {
         "TITLE": "Policy",
         "DEBOUNCE_MS": "debounce_ms",
-        "IDLE_TERMINAL": "idle_terminal"
+        "IDLE_TERMINAL": "idle_terminal",
+        "DEBOUNCE_MS_LABEL": "Debounce (ms)",
+        "FOLLOW_UP_AFTER_LABEL": "Follow up after (seconds)",
+        "FOLLOW_UP_COUNT_LABEL": "Follow up count",
+        "RESOLVE_AFTER_LABEL": "Resolve after (seconds)",
+        "IDLE_TERMINAL_LABEL": "Idle terminal action",
+        "IDLE_TERMINAL_RESOLVE": "Resolve",
+        "IDLE_TERMINAL_HANDOFF": "Handoff"
       },
       "EDITOR": {
         "ON_COMPLETE_LABEL": "On complete",
@@ -68,6 +75,14 @@
         "ACTION_MODE_AUTO": "Automatic",
         "ACTION_MODE_DEFERRED": "Confirm-only",
         "SKIPPED_LABEL": "Skip this stage"
+      },
+      "CONNECTORS": {
+        "TITLE": "Connectors",
+        "SAVE": "Save Connectors",
+        "SAVING": "Saving...",
+        "SAVE_SUCCESS": "Connectors saved.",
+        "SAVE_ERROR": "Failed to save connectors. Please try again.",
+        "PROVIDER_LABEL": "Provider for {capability}"
       }
     },
     "SECTION": {

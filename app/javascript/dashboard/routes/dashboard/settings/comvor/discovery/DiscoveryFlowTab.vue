@@ -4,6 +4,8 @@ import { useI18n } from 'vue-i18n';
 import { useStore } from 'vuex';
 import { useAlert } from 'dashboard/composables';
 import FlowEditor from './FlowEditor.vue';
+import LifecyclePolicyEditor from './LifecyclePolicyEditor.vue';
+import ConnectorsEditor from './ConnectorsEditor.vue';
 
 const props = defineProps({
   accountId: { type: String, required: true },
@@ -15,6 +17,7 @@ const store = useStore();
 
 const isLoading = ref(false);
 const isSaving = ref(false);
+const isSavingConnectors = ref(false);
 const flowConfig = ref(null);
 const connectors = ref(null);
 const notifications = ref(null);
@@ -57,6 +60,40 @@ function onStageUpdate(update) {
   hasUnsavedChanges.value = true;
 }
 
+function onPolicyUpdate(policy) {
+  flowConfig.value = { ...flowConfig.value, policy };
+  hasUnsavedChanges.value = true;
+}
+
+function onConnectorsUpdate(update) {
+  connectors.value = { ...connectors.value, ...update };
+}
+
+async function saveConnectors() {
+  if (!props.engineUrl) return;
+  isSavingConnectors.value = true;
+  try {
+    const res = await fetch(url('/connectors'), {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        enabled: connectors.value.enabled,
+        providers: connectors.value.providers,
+      }),
+    });
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || `HTTP ${res.status}`);
+    }
+    await loadAll();
+    useAlert(t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE_SUCCESS'));
+  } catch (e) {
+    useAlert(e.message || t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE_ERROR'));
+  } finally {
+    isSavingConnectors.value = false;
+  }
+}
+
 async function saveDraft() {
   if (!props.engineUrl) return;
   isSaving.value = true;
@@ -91,7 +128,7 @@ async function saveDraft() {
 }
 
 onMounted(loadAll);
-defineExpose({ loadAll, saveDraft });
+defineExpose({ loadAll, saveDraft, saveConnectors });
 </script>
 
 <template>
@@ -128,12 +165,10 @@ defineExpose({ loadAll, saveDraft });
         <h4 class="font-semibold mb-2">
           {{ t('COMVOR_SETTINGS.DISCOVERY.POLICY.TITLE') }}
         </h4>
-        <div>
-          {{ t('COMVOR_SETTINGS.DISCOVERY.POLICY.DEBOUNCE_MS') }}:
-          {{ flowConfig.policy.debounce_ms }} ·
-          {{ t('COMVOR_SETTINGS.DISCOVERY.POLICY.IDLE_TERMINAL') }}:
-          {{ flowConfig.policy.idle_terminal }}
-        </div>
+        <LifecyclePolicyEditor
+          :policy="flowConfig.policy"
+          @update:policy="onPolicyUpdate"
+        />
       </div>
 
       <div class="flex items-center justify-end gap-3 px-1 py-2">
@@ -147,6 +182,25 @@ defineExpose({ loadAll, saveDraft });
               : t('COMVOR_SETTINGS.DISCOVERY.SAVE')
           }}
         </woot-button>
+      </div>
+
+      <div v-if="connectors" class="border rounded-md p-3 text-sm">
+        <h4 class="font-semibold mb-2">
+          {{ t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.TITLE') }}
+        </h4>
+        <ConnectorsEditor
+          :connectors="connectors"
+          @update:connectors="onConnectorsUpdate"
+        />
+        <div class="flex items-center justify-end gap-3 px-1 py-2">
+          <woot-button :is-loading="isSavingConnectors" @click="saveConnectors">
+            {{
+              isSavingConnectors
+                ? t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVING')
+                : t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE')
+            }}
+          </woot-button>
+        </div>
       </div>
     </template>
   </div>
