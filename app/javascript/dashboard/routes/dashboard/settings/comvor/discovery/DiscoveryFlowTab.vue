@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useStore } from 'vuex';
 import { useAlert } from 'dashboard/composables';
+import FlowEditor from './FlowEditor.vue';
 
 const props = defineProps({
   accountId: { type: String, required: true },
@@ -13,9 +14,12 @@ const { t } = useI18n();
 const store = useStore();
 
 const isLoading = ref(false);
+const isSaving = ref(false);
 const flowConfig = ref(null);
 const connectors = ref(null);
 const notifications = ref(null);
+const draftStages = ref({});
+const hasUnsavedChanges = ref(false);
 
 function authHeaders() {
   const token = store.getters.getCurrentUser?.access_token || '';
@@ -47,14 +51,47 @@ async function loadAll() {
   }
 }
 
-function wallFor(flowKey, stageKey) {
-  return (flowConfig.value?.hard_errors || []).find(
-    e => e.flow_key === flowKey && e.stage_key === stageKey
-  );
+function onStageUpdate(update) {
+  const key = `${update.flow_key}:${update.stage_key}`;
+  draftStages.value = { ...draftStages.value, [key]: update };
+  hasUnsavedChanges.value = true;
+}
+
+async function saveDraft() {
+  if (!props.engineUrl) return;
+  isSaving.value = true;
+  try {
+    const stages = Object.values(draftStages.value).map(s => ({
+      flow_key: s.flow_key,
+      stage_key: s.stage_key,
+      action_mode: s.action_mode,
+      on_complete: s.on_complete,
+      guidance: s.guidance,
+      skipped: s.skipped,
+      enabled_reads: [],
+    }));
+    const res = await fetch(url('/flow-config'), {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ stages, policy: flowConfig.value.policy }),
+    });
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || `HTTP ${res.status}`);
+    }
+    await loadAll();
+    draftStages.value = {};
+    hasUnsavedChanges.value = false;
+    useAlert(t('COMVOR_SETTINGS.DISCOVERY.SAVE_SUCCESS'));
+  } catch (e) {
+    useAlert(e.message || t('COMVOR_SETTINGS.DISCOVERY.SAVE_ERROR'));
+  } finally {
+    isSaving.value = false;
+  }
 }
 
 onMounted(loadAll);
-defineExpose({ loadAll });
+defineExpose({ loadAll, saveDraft });
 </script>
 
 <template>
@@ -80,33 +117,11 @@ defineExpose({ loadAll });
           {{ flow.flow_key }}
           <span class="text-xs opacity-60">({{ flow.mode }})</span>
         </h4>
-        <ul class="flex flex-col gap-1">
-          <li
-            v-for="stage in flow.stages"
-            :key="stage.stage_key"
-            class="text-sm flex flex-wrap items-center gap-2"
-          >
-            <span class="font-mono">{{ stage.stage_key }}</span>
-            <span
-              v-if="stage.in_scope"
-              class="text-xs px-1.5 rounded bg-green-100 text-green-800"
-              >{{ t('COMVOR_SETTINGS.DISCOVERY.IN_SCOPE') }}</span
-            >
-            <span
-              v-else
-              class="text-xs px-1.5 rounded bg-amber-100 text-amber-800"
-            >
-              {{
-                wallFor(flow.flow_key, stage.stage_key)?.message ||
-                t('COMVOR_SETTINGS.DISCOVERY.OUT_OF_SCOPE')
-              }}
-            </span>
-            <span class="text-xs opacity-60"
-              >{{ t('COMVOR_SETTINGS.DISCOVERY.ON_COMPLETE_ARROW') }}
-              {{ stage.on_complete }}</span
-            >
-          </li>
-        </ul>
+        <FlowEditor
+          :flow="flow"
+          :walls="flowConfig.hard_errors || []"
+          @update:stage="onStageUpdate"
+        />
       </div>
 
       <div class="border rounded-md p-3 text-sm">
@@ -119,6 +134,19 @@ defineExpose({ loadAll });
           {{ t('COMVOR_SETTINGS.DISCOVERY.POLICY.IDLE_TERMINAL') }}:
           {{ flowConfig.policy.idle_terminal }}
         </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-3 px-1 py-2">
+        <span v-if="hasUnsavedChanges" class="text-xs text-amber-600">
+          {{ t('COMVOR_SETTINGS.DISCOVERY.UNSAVED_CHANGES') }}
+        </span>
+        <woot-button :is-loading="isSaving" @click="saveDraft">
+          {{
+            isSaving
+              ? t('COMVOR_SETTINGS.DISCOVERY.SAVING')
+              : t('COMVOR_SETTINGS.DISCOVERY.SAVE')
+          }}
+        </woot-button>
       </div>
     </template>
   </div>

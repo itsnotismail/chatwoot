@@ -71,7 +71,7 @@ function mockFetch() {
 describe('DiscoveryFlowTab.vue', () => {
   beforeEach(mockFetch);
 
-  it('loads and renders flow stages with scope + wall info', async () => {
+  it('loads and renders a FlowEditor per flow with scope + wall info', async () => {
     const wrapper = mount(DiscoveryFlowTab, {
       props: { accountId: '7', engineUrl: 'http://engine' },
       global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
@@ -84,5 +84,39 @@ describe('DiscoveryFlowTab.vue', () => {
     expect(text).toContain('order.draft');
     // fetched all three endpoints
     expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('accumulates edits from FlowEditor and PUTs only the changed stages on save', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    // Simulate an edit coming from FlowEditor (real child component, not stubbed).
+    const select = wrapper.find('select[data-testid="on-complete-select"]');
+    await select.setValue('handoff');
+
+    expect(wrapper.text()).toContain('UNSAVED_CHANGES');
+
+    await wrapper.vm.saveDraft();
+    await flushPromises();
+
+    const putCall = global.fetch.mock.calls.find(
+      call => call[1]?.method === 'PUT'
+    );
+    expect(putCall).toBeTruthy();
+    expect(putCall[0]).toBe('http://engine/api/accounts/7/flow-config');
+    const body = JSON.parse(putCall[1].body);
+    expect(body.stages).toHaveLength(1);
+    expect(body.stages[0]).toMatchObject({
+      flow_key: 'sales',
+      stage_key: 'discovery',
+      on_complete: 'handoff',
+      enabled_reads: [],
+    });
+    expect(body.policy).toMatchObject(flowConfig.policy);
+    // fetched all three endpoints on mount, plus the PUT and the reload-all after save
+    expect(global.fetch).toHaveBeenCalledTimes(7);
   });
 });

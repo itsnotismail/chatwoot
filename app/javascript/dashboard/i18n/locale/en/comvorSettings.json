@@ -48,10 +48,26 @@
       "IN_SCOPE": "In scope",
       "OUT_OF_SCOPE": "Out of scope",
       "ON_COMPLETE_ARROW": "→",
+      "SAVE": "Save Draft",
+      "SAVING": "Saving...",
+      "SAVE_SUCCESS": "Discovery flow draft saved.",
+      "SAVE_ERROR": "Failed to save discovery flow draft. Please try again.",
+      "UNSAVED_CHANGES": "You have unsaved changes.",
       "POLICY": {
         "TITLE": "Policy",
         "DEBOUNCE_MS": "debounce_ms",
         "IDLE_TERMINAL": "idle_terminal"
+      },
+      "EDITOR": {
+        "ON_COMPLETE_LABEL": "On complete",
+        "ON_COMPLETE_CONTINUE": "Continue",
+        "ON_COMPLETE_HANDOFF": "Handoff",
+        "ON_COMPLETE_RESOLVE": "Resolve",
+        "GUIDANCE_LABEL": "Guidance",
+        "ACTION_MODE_LABEL": "Action mode",
+        "ACTION_MODE_AUTO": "Automatic",
+        "ACTION_MODE_DEFERRED": "Confirm-only",
+        "SKIPPED_LABEL": "Skip this stage"
       }
     },
     "SECTION": {
