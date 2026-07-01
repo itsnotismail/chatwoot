@@ -128,8 +128,10 @@ describe('DiscoveryFlowTab.vue', () => {
       enabled_reads: [],
     });
     expect(body.policy).toMatchObject(flowConfig.policy);
-    // fetched all three endpoints on mount, plus the PUT and the reload-all after save
-    expect(global.fetch).toHaveBeenCalledTimes(7);
+    // fetched all three endpoints on mount, plus the PUT and a scoped
+    // flow-config-only reload after save (connectors/notifications are not
+    // re-fetched, so a flow save can't clobber their pending edits).
+    expect(global.fetch).toHaveBeenCalledTimes(5);
   });
 
   it('publish 422 renders hard-error messages inline and does not flip status', async () => {
@@ -199,5 +201,44 @@ describe('DiscoveryFlowTab.vue', () => {
     expect(wrapper.vm.flowConfig.status).toBe('published');
     expect(wrapper.text()).toContain('published');
     expect(wrapper.text()).not.toContain('PRIOR_PUBLISH_HARD_ERROR');
+  });
+
+  it('editing notifications marks the unsaved indicator dirty', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).not.toContain('UNSAVED_CHANGES');
+
+    wrapper.vm.onNotificationsUpdate({
+      channels: ['email'],
+      subscriptions: [],
+    });
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.text()).toContain('UNSAVED_CHANGES');
+  });
+
+  it('saving the flow draft does not reload (and clobber) notifications', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    global.fetch.mockClear();
+
+    await wrapper.vm.saveDraft();
+    await flushPromises();
+
+    const calledUrls = global.fetch.mock.calls.map(call => call[0]);
+    expect(
+      calledUrls.some(
+        u => u.endsWith('/flow-config') || u.includes('/flow-config?')
+      )
+    ).toBe(true);
+    expect(calledUrls.some(u => u.endsWith('/notifications'))).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useStore } from 'vuex';
 import { useAlert } from 'dashboard/composables';
@@ -25,7 +25,12 @@ const flowConfig = ref(null);
 const connectors = ref(null);
 const notifications = ref(null);
 const draftStages = ref({});
-const hasUnsavedChanges = ref(false);
+const flowDirty = ref(false);
+const connectorsDirty = ref(false);
+const notificationsDirty = ref(false);
+const hasUnsavedChanges = computed(
+  () => flowDirty.value || connectorsDirty.value || notificationsDirty.value
+);
 const hardErrors = ref([]);
 const softWarnings = ref([]);
 
@@ -40,20 +45,47 @@ function url(suffix) {
   return `${props.engineUrl}/api/accounts/${props.accountId}${suffix}`;
 }
 
+async function loadFlowConfig() {
+  if (!props.engineUrl) return;
+  try {
+    const fc = await fetch(url('/flow-config'), { headers: authHeaders() });
+    if (fc.ok) flowConfig.value = await fc.json();
+  } catch (e) {
+    useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
+  }
+}
+
+async function loadConnectors() {
+  if (!props.engineUrl) return;
+  try {
+    const conn = await fetch(url('/connectors'), { headers: authHeaders() });
+    if (conn.ok) connectors.value = await conn.json();
+  } catch (e) {
+    useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
+  }
+}
+
+async function loadNotifications() {
+  if (!props.engineUrl) return;
+  try {
+    const notif = await fetch(url('/notifications'), {
+      headers: authHeaders(),
+    });
+    if (notif.ok) notifications.value = await notif.json();
+  } catch (e) {
+    useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
+  }
+}
+
 async function loadAll() {
   if (!props.engineUrl) return;
   isLoading.value = true;
   try {
-    const [fc, conn, notif] = await Promise.all([
-      fetch(url('/flow-config'), { headers: authHeaders() }),
-      fetch(url('/connectors'), { headers: authHeaders() }),
-      fetch(url('/notifications'), { headers: authHeaders() }),
+    await Promise.all([
+      loadFlowConfig(),
+      loadConnectors(),
+      loadNotifications(),
     ]);
-    if (fc.ok) flowConfig.value = await fc.json();
-    if (conn.ok) connectors.value = await conn.json();
-    if (notif.ok) notifications.value = await notif.json();
-  } catch (e) {
-    useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
   } finally {
     isLoading.value = false;
   }
@@ -62,20 +94,22 @@ async function loadAll() {
 function onStageUpdate(update) {
   const key = `${update.flow_key}:${update.stage_key}`;
   draftStages.value = { ...draftStages.value, [key]: update };
-  hasUnsavedChanges.value = true;
+  flowDirty.value = true;
 }
 
 function onPolicyUpdate(policy) {
   flowConfig.value = { ...flowConfig.value, policy };
-  hasUnsavedChanges.value = true;
+  flowDirty.value = true;
 }
 
 function onConnectorsUpdate(update) {
   connectors.value = { ...connectors.value, ...update };
+  connectorsDirty.value = true;
 }
 
 function onNotificationsUpdate(update) {
   notifications.value = { ...notifications.value, ...update };
+  notificationsDirty.value = true;
 }
 
 async function saveConnectors() {
@@ -94,7 +128,8 @@ async function saveConnectors() {
       const msg = await res.text();
       throw new Error(msg || `HTTP ${res.status}`);
     }
-    await loadAll();
+    await loadConnectors();
+    connectorsDirty.value = false;
     useAlert(t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE_SUCCESS'));
   } catch (e) {
     useAlert(e.message || t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE_ERROR'));
@@ -125,9 +160,9 @@ async function saveDraft() {
       const msg = await res.text();
       throw new Error(msg || `HTTP ${res.status}`);
     }
-    await loadAll();
+    await loadFlowConfig();
     draftStages.value = {};
-    hasUnsavedChanges.value = false;
+    flowDirty.value = false;
     hardErrors.value = [];
     softWarnings.value = [];
     useAlert(t('COMVOR_SETTINGS.DISCOVERY.SAVE_SUCCESS'));
@@ -139,7 +174,7 @@ async function saveDraft() {
 }
 
 async function publish() {
-  if (!props.engineUrl || hasUnsavedChanges.value) return;
+  if (!props.engineUrl || flowDirty.value) return;
   isPublishing.value = true;
   try {
     const res = await fetch(url('/flow-config/publish'), {
@@ -156,7 +191,7 @@ async function publish() {
       const msg = await res.text();
       throw new Error(msg || `HTTP ${res.status}`);
     }
-    await loadAll();
+    await loadFlowConfig();
     hardErrors.value = [];
     softWarnings.value = [];
     useAlert(t('COMVOR_SETTINGS.DISCOVERY.PUBLISH_SUCCESS'));
@@ -183,7 +218,8 @@ async function saveNotifications() {
       const msg = await res.text();
       throw new Error(msg || `HTTP ${res.status}`);
     }
-    await loadAll();
+    await loadNotifications();
+    notificationsDirty.value = false;
     useAlert(t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SAVE_SUCCESS'));
   } catch (e) {
     useAlert(
@@ -197,14 +233,22 @@ async function saveNotifications() {
 onMounted(loadAll);
 defineExpose({
   loadAll,
+  loadFlowConfig,
+  loadConnectors,
+  loadNotifications,
   saveDraft,
   saveConnectors,
   saveNotifications,
   publish,
+  onConnectorsUpdate,
+  onNotificationsUpdate,
   flowConfig,
   hardErrors,
   softWarnings,
   hasUnsavedChanges,
+  flowDirty,
+  connectorsDirty,
+  notificationsDirty,
 });
 </script>
 
@@ -283,9 +327,9 @@ defineExpose({
         <woot-button
           variant="clear"
           :is-loading="isPublishing"
-          :disabled="hasUnsavedChanges"
+          :disabled="flowDirty"
           :title="
-            hasUnsavedChanges
+            flowDirty
               ? t('COMVOR_SETTINGS.DISCOVERY.PUBLISH_DISABLED_UNSAVED_HINT')
               : null
           "
