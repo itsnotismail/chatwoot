@@ -31,6 +31,11 @@ const notificationsDirty = ref(false);
 const hasUnsavedChanges = computed(
   () => flowDirty.value || connectorsDirty.value || notificationsDirty.value
 );
+// Mirrors the backend's 422: a new (id-less) Telegram channel must carry a
+// non-empty, non-masked bot_token before it can be saved.
+const notificationsInvalid = computed(() =>
+  (notifications.value?.channels || []).some(c => !c.id && !c.config?.bot_token)
+);
 const hardErrors = ref([]);
 const softWarnings = ref([]);
 
@@ -203,7 +208,7 @@ async function publish() {
 }
 
 async function saveNotifications() {
-  if (!props.engineUrl) return;
+  if (!props.engineUrl || notificationsInvalid.value) return;
   isSavingNotifications.value = true;
   try {
     const res = await fetch(url('/notifications'), {
@@ -249,6 +254,7 @@ defineExpose({
   flowDirty,
   connectorsDirty,
   notificationsDirty,
+  notificationsInvalid,
 });
 </script>
 
@@ -378,8 +384,17 @@ defineExpose({
           @update:notifications="onNotificationsUpdate"
         />
         <div class="flex items-center justify-end gap-3 px-1 py-2">
+          <span v-if="notificationsInvalid" class="text-xs text-amber-600">
+            {{
+              t(
+                'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.NEW_CHANNEL_TOKEN_REQUIRED_HINT'
+              )
+            }}
+          </span>
           <woot-button
+            data-testid="save-notifications-button"
             :is-loading="isSavingNotifications"
+            :disabled="notificationsInvalid"
             @click="saveNotifications"
           >
             {{

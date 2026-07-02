@@ -10,10 +10,19 @@ const emit = defineEmits(['update:notifications']);
 
 const { t } = useI18n();
 
-// Local channels are plain {bot_token, chat_id, enabled} rows (no id — the
-// backend assigns ids on save). Local subscriptions track `channelIndex`
-// (the 0-based position in `channels`) rather than the DB `channel_id`, so
-// the channel <select> can bind directly to array position.
+// Telegram bot tokens are write-only: the backend masks a saved token as
+// this sentinel in GET responses, and accepts it back in PUT bodies to mean
+// "keep the stored token unchanged".
+const TOKEN_MASK = '********';
+
+// Local channels are {id, bot_token, chat_id, enabled, tokenTyped} rows.
+// `id` is 0/undefined for a channel not yet persisted. `bot_token` is never
+// seeded with the mask — for an existing channel whose fetched token is
+// masked, the input starts empty (with a placeholder) and `tokenTyped`
+// tracks whether the user has entered a replacement. Local subscriptions
+// track `channelIndex` (the 0-based position in `channels`) rather than the
+// DB `channel_id`, so the channel <select> can bind directly to array
+// position.
 const channels = reactive([]);
 const subscriptions = reactive([]);
 
@@ -21,11 +30,17 @@ function seedChannels(list) {
   channels.splice(
     0,
     channels.length,
-    ...(list || []).map(c => ({
-      bot_token: c.config?.bot_token || '',
-      chat_id: c.config?.chat_id || '',
-      enabled: !!c.enabled,
-    }))
+    ...(list || []).map(c => {
+      const fetchedToken = c.config?.bot_token || '';
+      const isMasked = fetchedToken === TOKEN_MASK;
+      return {
+        id: c.id || 0,
+        bot_token: isMasked ? '' : fetchedToken,
+        chat_id: c.config?.chat_id || '',
+        enabled: !!c.enabled,
+        tokenTyped: false,
+      };
+    })
   );
 }
 
@@ -58,8 +73,16 @@ watch(
 function emitUpdate() {
   emit('update:notifications', {
     channels: channels.map(c => ({
+      id: c.id,
       kind: 'telegram',
-      config: { bot_token: c.bot_token, chat_id: c.chat_id },
+      config: {
+        // Existing channel, untouched token → send the sentinel so the
+        // backend keeps the stored token. Otherwise send whatever the user
+        // typed (empty for an untouched new channel, which the Save button
+        // gates on).
+        bot_token: !c.tokenTyped && c.id ? TOKEN_MASK : c.bot_token,
+        chat_id: c.chat_id,
+      },
       enabled: c.enabled,
     })),
     // Guard against a subscription referencing a channel index that no
@@ -77,11 +100,20 @@ function emitUpdate() {
 
 function onChannelField(index, field, value) {
   channels[index][field] = value;
+  if (field === 'bot_token') {
+    channels[index].tokenTyped = true;
+  }
   emitUpdate();
 }
 
 function addChannel() {
-  channels.push({ bot_token: '', chat_id: '', enabled: true });
+  channels.push({
+    id: 0,
+    bot_token: '',
+    chat_id: '',
+    enabled: true,
+    tokenTyped: false,
+  });
   emitUpdate();
 }
 
@@ -134,6 +166,13 @@ function removeSubscription(index) {
             data-testid="channel-bot-token-input"
             type="text"
             :value="channel.bot_token"
+            :placeholder="
+              channel.id && !channel.tokenTyped
+                ? t(
+                    'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.BOT_TOKEN_SAVED_PLACEHOLDER'
+                  )
+                : null
+            "
             class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
             @change="onChannelField(index, 'bot_token', $event.target.value)"
           />

@@ -99,6 +99,8 @@
         "SAVE_ERROR": "Failed to save notifications. Please try again.",
         "CHANNELS_TITLE": "Telegram channels",
         "BOT_TOKEN_LABEL": "Bot token",
+        "BOT_TOKEN_SAVED_PLACEHOLDER": "Saved — enter a new token to replace",
+        "NEW_CHANNEL_TOKEN_REQUIRED_HINT": "Enter a bot token for each new channel before saving.",
         "CHAT_ID_LABEL": "Chat ID",
         "ENABLED_LABEL": "Enabled",
         "ADD_CHANNEL": "Add channel",

@@ -4,12 +4,14 @@ import NotificationsEditor from '../NotificationsEditor.vue';
 // Minimal i18n mock, matching the pattern used in other discovery specs.
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: k => k }) }));
 
+const MASK = '********';
+
 const notifications = {
   channels: [
     {
       id: 5,
       kind: 'telegram',
-      config: { bot_token: 'tok', chat_id: '123' },
+      config: { bot_token: MASK, chat_id: '123' },
       enabled: true,
     },
   ],
@@ -39,9 +41,50 @@ describe('NotificationsEditor.vue', () => {
     expect(lastEvent.subscriptions[0].event).toBe('handoff');
     expect(lastEvent.channels).toHaveLength(1);
     expect(lastEvent.channels[0]).toMatchObject({
+      id: 5,
       kind: 'telegram',
-      config: { bot_token: 'tok', chat_id: '123' },
+      config: { bot_token: MASK, chat_id: '123' },
       enabled: true,
+    });
+  });
+
+  it('shows the bot token input empty (not the mask) for an existing masked channel', () => {
+    const wrapper = mountEditor();
+    const input = wrapper.find('input[data-testid="channel-bot-token-input"]');
+    expect(input.element.value).toBe('');
+    expect(input.attributes('placeholder')).toBe(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.BOT_TOKEN_SAVED_PLACEHOLDER'
+    );
+  });
+
+  it('round-trips the sentinel + id for an untouched existing channel', async () => {
+    const wrapper = mountEditor();
+    // Trigger an emit via an unrelated field change (chat_id), token untouched.
+    const chatIdInput = wrapper.find(
+      'input[data-testid="channel-chat-id-input"]'
+    );
+    await chatIdInput.setValue('123');
+
+    const emitted = wrapper.emitted('update:notifications');
+    const lastEvent = emitted[emitted.length - 1][0];
+    expect(lastEvent.channels[0]).toMatchObject({
+      id: 5,
+      config: { bot_token: MASK, chat_id: '123' },
+    });
+  });
+
+  it('sends the newly typed token instead of the sentinel when the user edits it', async () => {
+    const wrapper = mountEditor();
+    const tokenInput = wrapper.find(
+      'input[data-testid="channel-bot-token-input"]'
+    );
+    await tokenInput.setValue('new-secret-token');
+
+    const emitted = wrapper.emitted('update:notifications');
+    const lastEvent = emitted[emitted.length - 1][0];
+    expect(lastEvent.channels[0]).toMatchObject({
+      id: 5,
+      config: { bot_token: 'new-secret-token' },
     });
   });
 
@@ -69,6 +112,39 @@ describe('NotificationsEditor.vue', () => {
       '[data-testid="channel-bot-token-input"]'
     );
     expect(channelRows).toHaveLength(0);
+  });
+
+  it('a new channel without a token is emitted with an empty bot_token (no sentinel), blocking save', async () => {
+    const wrapper = mountEditor();
+    const addChannelBtn = wrapper.find(
+      'button[data-testid="add-channel-button"]'
+    );
+    await addChannelBtn.trigger('click');
+
+    const emitted = wrapper.emitted('update:notifications');
+    const lastEvent = emitted[emitted.length - 1][0];
+    const newChannel = lastEvent.channels[1];
+    expect(newChannel.id).toBeFalsy();
+    expect(newChannel.config.bot_token).toBe('');
+  });
+
+  it('a new channel with a typed token is emitted with that token', async () => {
+    const wrapper = mountEditor();
+    const addChannelBtn = wrapper.find(
+      'button[data-testid="add-channel-button"]'
+    );
+    await addChannelBtn.trigger('click');
+
+    const tokenInputs = wrapper.findAll(
+      'input[data-testid="channel-bot-token-input"]'
+    );
+    await tokenInputs[1].setValue('brand-new-token');
+
+    const emitted = wrapper.emitted('update:notifications');
+    const lastEvent = emitted[emitted.length - 1][0];
+    expect(lastEvent.channels[1]).toMatchObject({
+      config: { bot_token: 'brand-new-token' },
+    });
   });
 
   it('adds a subscription via the add-subscription button, growing the local list', async () => {

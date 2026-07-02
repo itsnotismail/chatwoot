@@ -221,6 +221,61 @@ describe('DiscoveryFlowTab.vue', () => {
     expect(wrapper.text()).toContain('UNSAVED_CHANGES');
   });
 
+  it('blocks saving notifications when a new channel has no bot token, with an inline hint', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    wrapper.vm.onNotificationsUpdate({
+      channels: [
+        {
+          id: 0,
+          kind: 'telegram',
+          config: { bot_token: '', chat_id: '' },
+          enabled: true,
+        },
+      ],
+      subscriptions: [],
+    });
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.text()).toContain(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.NEW_CHANNEL_TOKEN_REQUIRED_HINT'
+    );
+    const saveNotifBtn = wrapper.find(
+      '[data-testid="save-notifications-button"]'
+    );
+    expect(saveNotifBtn.attributes('disabled')).toBe('true');
+  });
+
+  it('allows saving notifications once the new channel has a bot token', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    wrapper.vm.onNotificationsUpdate({
+      channels: [
+        {
+          id: 0,
+          kind: 'telegram',
+          config: { bot_token: 'brand-new-token', chat_id: '' },
+          enabled: true,
+        },
+      ],
+      subscriptions: [],
+    });
+    await wrapper.vm.$nextTick();
+
+    const saveNotifBtn = wrapper.find(
+      '[data-testid="save-notifications-button"]'
+    );
+    expect(saveNotifBtn.attributes('disabled')).toBe('false');
+  });
+
   it('saving the flow draft does not reload (and clobber) notifications', async () => {
     const wrapper = mount(DiscoveryFlowTab, {
       props: { accountId: '7', engineUrl: 'http://engine' },
