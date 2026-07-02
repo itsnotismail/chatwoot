@@ -168,7 +168,9 @@ async function saveConnectors() {
     // above/below). Disabled capabilities are a deliberate exception: they
     // change which stages are in-scope, so if the saved disabled set differs
     // from what we last loaded, also refresh flow-config to pick up the
-    // updated soft_warnings / stage scoping right away.
+    // updated soft_warnings / stage scoping right away. Note: this reload
+    // replaces flowConfig wholesale, so any UNSAVED policy edits (which live
+    // on flowConfig.policy) are reseeded away; per-stage draft edits survive.
     if (lastDisabledCapabilitiesSnapshot.value !== disabledBeforeSave) {
       await loadFlowConfig();
     }
