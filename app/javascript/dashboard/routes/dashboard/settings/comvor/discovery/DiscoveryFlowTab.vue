@@ -5,6 +5,7 @@ import { useStore } from 'vuex';
 import { useAlert } from 'dashboard/composables';
 import SalesFlowEditor from './SalesFlowEditor.vue';
 import SupportIntentsEditor from './SupportIntentsEditor.vue';
+import PublishConfirmModal from './PublishConfirmModal.vue';
 import { flowSummary } from './summary.js';
 
 const props = defineProps({
@@ -36,6 +37,27 @@ const flowDirty = ref(false);
 const hasUnsavedChanges = computed(() => flowDirty.value);
 const hardErrors = ref([]);
 const softWarnings = ref([]);
+const showPublishModal = ref(false);
+
+const STATUS_PILL_MAP = {
+  defaults: {
+    labelKey: 'COMVOR_SETTINGS.STATUS_PILL.DEFAULTS',
+    classes: 'bg-n-slate-3 text-n-slate-11',
+  },
+  draft: {
+    labelKey: 'COMVOR_SETTINGS.STATUS_PILL.DRAFT',
+    classes:
+      'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  },
+  published: {
+    labelKey: 'COMVOR_SETTINGS.STATUS_PILL.PUBLISHED',
+    classes:
+      'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+  },
+};
+const statusPill = computed(
+  () => STATUS_PILL_MAP[flowConfig.value?.status] || STATUS_PILL_MAP.defaults
+);
 // Which heading the wall panel shows: publish-blocked vs draft-can't-publish.
 const hardErrorsTitleKey = ref(
   'COMVOR_SETTINGS.DISCOVERY.PUBLISH_HARD_ERRORS_TITLE'
@@ -182,7 +204,21 @@ async function publish() {
     useAlert(e.message || t('COMVOR_SETTINGS.DISCOVERY.PUBLISH_ERROR'));
   } finally {
     isPublishing.value = false;
+    showPublishModal.value = false;
   }
+}
+
+function openPublishModal() {
+  if (flowDirty.value) return;
+  showPublishModal.value = true;
+}
+
+function cancelPublishModal() {
+  showPublishModal.value = false;
+}
+
+async function confirmPublish() {
+  await publish();
 }
 
 onMounted(loadAll);
@@ -191,6 +227,10 @@ defineExpose({
   loadFlowConfig,
   saveDraft,
   publish,
+  openPublishModal,
+  confirmPublish,
+  cancelPublishModal,
+  showPublishModal,
   flowConfig,
   hardErrors,
   softWarnings,
@@ -209,8 +249,10 @@ defineExpose({
           >{{ t('COMVOR_SETTINGS.DISCOVERY.STATUS') }}:</span
         >
         <span
-          class="text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700"
-          >{{ flowConfig.status }}</span
+          data-testid="status-pill"
+          class="text-xs px-2 py-0.5 rounded font-medium"
+          :class="statusPill.classes"
+          >{{ t(statusPill.labelKey) }}</span
         >
       </div>
 
@@ -305,31 +347,47 @@ defineExpose({
         <span v-if="hasUnsavedChanges" class="text-xs text-amber-600">
           {{ t('COMVOR_SETTINGS.DISCOVERY.UNSAVED_CHANGES') }}
         </span>
-        <woot-button
-          variant="clear"
-          :is-loading="isPublishing"
-          :disabled="flowDirty"
+        <button
+          type="button"
+          data-testid="publish-button"
+          :disabled="flowDirty || isPublishing"
           :title="
             flowDirty
               ? t('COMVOR_SETTINGS.DISCOVERY.PUBLISH_DISABLED_UNSAVED_HINT')
               : null
           "
-          @click="publish"
+          class="rounded-lg border border-n-weak px-4 py-2 text-sm font-medium text-n-slate-12 hover:bg-n-alpha-1 disabled:opacity-50"
+          @click="openPublishModal"
         >
           {{
             isPublishing
               ? t('COMVOR_SETTINGS.DISCOVERY.PUBLISHING')
               : t('COMVOR_SETTINGS.DISCOVERY.PUBLISH')
           }}
-        </woot-button>
-        <woot-button :is-loading="isSaving" @click="saveDraft">
+        </button>
+        <button
+          type="button"
+          data-testid="save-draft-button"
+          :disabled="isSaving"
+          class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
+          @click="saveDraft"
+        >
           {{
             isSaving
               ? t('COMVOR_SETTINGS.DISCOVERY.SAVING')
               : t('COMVOR_SETTINGS.DISCOVERY.SAVE')
           }}
-        </woot-button>
+        </button>
       </div>
+
+      <PublishConfirmModal
+        v-if="showPublishModal"
+        :summary="salesSummary"
+        :soft-warnings="flowConfig.soft_warnings || []"
+        :is-publishing="isPublishing"
+        @confirm="confirmPublish"
+        @cancel="cancelPublishModal"
+      />
     </template>
   </div>
 </template>

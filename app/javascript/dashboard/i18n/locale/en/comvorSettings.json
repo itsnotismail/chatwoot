@@ -14,6 +14,11 @@
       "REMOVE_ICON": "✕",
       "CHECK_ICON": "✓"
     },
+    "STATUS_PILL": {
+      "DEFAULTS": "Using default setup",
+      "DRAFT": "Draft — unpublished changes",
+      "PUBLISHED": "Live"
+    },
     "ONBOARDING": {
       "TITLE": "Set up Comvor for this account",
       "DESCRIPTION": "Tell us a bit about this business to get started. You can change most of this later — the business type is permanent.",
@@ -30,6 +35,12 @@
       "BUSINESS_DESCRIPTION": {
         "LABEL": "What does this business do?",
         "PLACEHOLDER": "We sell handmade soap online and in our Malé store."
+      },
+      "BOT_REACH": {
+        "LABEL": "How far should the bot go?",
+        "ANSWER_ONLY": "Answer questions only",
+        "PREPARE_ORDERS": "Prepare orders for my team",
+        "SHARE_PAYMENT": "Also share payment instructions"
       },
       "SUBMIT": "Get started",
       "SUBMITTING": "Setting up...",
@@ -67,6 +78,13 @@
         "SALES": "Sales flow",
         "SUPPORT": "Support intents"
       },
+      "PUBLISH_MODAL": {
+        "TITLE": "Publish this flow?",
+        "CONSEQUENCES_TITLE": "Before you publish",
+        "SOFT_WARNING": "{capability} is unavailable — customers will be handed to your team at that step.",
+        "CONFIRM": "Confirm & publish",
+        "CANCEL": "Cancel"
+      },
       "SUMMARY": {
         "AND": "and",
         "FINISH_HANDOFF": "hands over to your team",
@@ -83,11 +101,14 @@
         "FINISH_HANDOFF": "Hands over to your team",
         "FINISH_RESOLVE": "Resolves the conversation",
         "WHO_COMPLETES_LABEL": "Who completes this step",
+        "WHO_COMPLETES_TOOLTIP": "Choose whether the bot finishes this step on its own, or only prepares it for your team to complete.",
         "WHO_COMPLETES_AUTO": "Bot completes it",
         "WHO_COMPLETES_DEFERRED": "Bot prepares, your team completes",
+        "FINISH_TOOLTIP": "Choose what happens once this step is done: hand the conversation to your team, or resolve it automatically.",
         "ADJUST_GUIDANCE": "Adjust",
         "GUIDANCE_LABEL": "Guidance",
         "NOTIFY_TOGGLE_LABEL": "Notify your team when this step completes",
+        "NOTIFY_TOOLTIP": "Send a message to your team's notification channel when this step is completed.",
         "NOTIFY_GUIDANCE_LABEL": "What should the notification include?",
         "HANDLED_BY_TEAM": "Handled by your team",
         "CHAR_COUNT": "{count}/{max}"
@@ -116,16 +137,20 @@
         "SKIPPED_LABEL": "Skip this stage"
       },
       "SUPPORT_EDITOR": {
-        "ENABLE_TOGGLE_LABEL": "Enable this intent",
+        "ENABLE_TOGGLE_ARIA_LABEL": "Enable {stage}",
         "WHO_COMPLETES_LABEL": "Who completes this",
+        "WHO_COMPLETES_TOOLTIP": "Choose whether the bot finishes this on its own, or only prepares it for your team to complete.",
         "WHO_COMPLETES_AUTO": "Bot completes it",
         "WHO_COMPLETES_DEFERRED": "Bot prepares, your team completes",
         "FINISH_LABEL": "After handling",
+        "FINISH_TOOLTIP": "Choose what happens once this is handled: hand the conversation to your team, or resolve it automatically.",
         "FINISH_HANDOFF": "Hands over to your team",
         "FINISH_RESOLVE": "Resolves the conversation",
         "NOTIFY_TOGGLE_LABEL": "Notify your team when this intent completes",
+        "NOTIFY_TOOLTIP": "Send a message to your team's notification channel when this intent is completed.",
         "NOTIFY_GUIDANCE_LABEL": "What should the notification include?",
         "GUIDANCE_LABEL": "Special instructions (optional)",
+        "GUIDANCE_TOOLTIP": "Extra steps for the bot to follow, beyond your standard policies.",
         "GUIDANCE_HINT": "Your return & cancellation policies already apply (see the Policies tab). Use this only for extra steps — e.g. \"always ask for a photo of the damaged item\".",
         "CHAR_COUNT": "{count}/{max}",
         "READ_WALL_POINTER": "Connect one in the Connector tab.",
@@ -151,6 +176,7 @@
         "SAVE_ERROR": "Failed to save notifications. Please try again.",
         "CHANNELS_TITLE": "Telegram channels",
         "DEFAULT_LABEL": "Default",
+        "DEFAULT_TOOLTIP": "The default channel receives events that aren't routed to a specific channel below.",
         "NO_DEFAULT_CHANNEL_HINT": "No default channel — events without a specific channel won't be sent.",
         "BOT_TOKEN_LABEL": "Bot token",
         "BOT_TOKEN_SAVED_PLACEHOLDER": "Saved — enter a new token to replace",
@@ -172,7 +198,9 @@
         "CHANNEL_LABEL": "Channel",
         "ROUTE_DEFAULT_OPTION": "Default (uses the starred channel)",
         "ROUTE_MUTED_OPTION": "Muted",
-        "TEMPLATE_LABEL": "Template (optional)"
+        "TEMPLATE_LABEL": "Template (optional)",
+        "TEMPLATE_TOOLTIP": "Customize the message sent for this event. Leave blank to use the default wording.",
+        "TEMPLATE_CHAR_COUNT": "{count}/{max}"
       }
     },
     "SECTION": {
@@ -329,7 +357,9 @@
       "FOLLOW_UP": {
         "TITLE": "Follow-up time",
         "LABEL": "Minutes before follow-up",
-        "HINT": "How long after a customer goes quiet before the bot sends one friendly follow-up."
+        "TOOLTIP": "How long after a customer goes quiet before the bot sends one friendly follow-up. Between 1 and 10080 minutes (7 days).",
+        "HINT": "How long after a customer goes quiet before the bot sends one friendly follow-up.",
+        "RANGE_HINT": "Enter a value between 1 and 10080 minutes (7 days)."
       }
     }
   }

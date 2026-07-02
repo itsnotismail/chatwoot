@@ -286,4 +286,55 @@ describe('SupportIntentsEditor.vue', () => {
       expect(control.attributes('disabled')).toBeUndefined();
     });
   });
+
+  it('re-seeds cleanly when the flow prop is replaced with a new stage set (no crash, controls reflect new values)', async () => {
+    const wrapper = mountEditor();
+    // Expand + interact with the original stage set first.
+    const rows = wrapper.findAll('[data-testid="intent-row"]');
+    await rows[0].find('[data-testid="row-expand-toggle"]').trigger('click');
+    expect(wrapper.find('[data-testid="guidance-textarea"]').exists()).toBe(
+      true
+    );
+
+    const newFlow = baseFlow({
+      stages: [
+        {
+          stage_key: 'warranty_claim',
+          display_name: 'Warranty claim',
+          description: 'Handles warranty claims',
+          guidance: 'ask for proof of purchase',
+          action_tool: '',
+          has_action: false,
+          notifiable: false,
+          notify_enabled: false,
+          notify_guidance: '',
+          on_complete: 'resolve',
+          skipped: false,
+          in_scope: true,
+        },
+      ],
+    });
+
+    await wrapper.setProps({ flow: newFlow });
+    await wrapper.vm.$nextTick();
+
+    const newRows = wrapper.findAll('[data-testid="intent-row"]');
+    expect(newRows).toHaveLength(1);
+    expect(newRows[0].text()).toContain('Warranty claim');
+    // New stage set starts collapsed again (fresh reactive() re-seed), and
+    // toggling it still emits correctly — no stale state from the old flow.
+    expect(newRows[0].find('[data-testid="guidance-textarea"]').exists()).toBe(
+      false
+    );
+
+    const toggle = newRows[0].find('[data-testid="enable-toggle"]');
+    await toggle.setValue(false);
+    const emitted = wrapper.emitted('update:stage');
+    const last = emitted[emitted.length - 1][0];
+    expect(last).toMatchObject({
+      flow_key: 'support',
+      stage_key: 'warranty_claim',
+      skipped: true,
+    });
+  });
 });

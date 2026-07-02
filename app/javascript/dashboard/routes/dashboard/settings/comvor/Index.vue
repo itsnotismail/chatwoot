@@ -65,6 +65,21 @@ const flowPolicy = ref(null);
 const flowVersionId = ref(0);
 const isSavingFollowUp = ref(false);
 
+const FOLLOW_UP_MIN_MINUTES = 1;
+const FOLLOW_UP_MAX_MINUTES = 10080;
+
+function clampFollowUpMinutes() {
+  const value = Number(followUpMinutes.value);
+  if (Number.isNaN(value)) {
+    followUpMinutes.value = FOLLOW_UP_MIN_MINUTES;
+    return;
+  }
+  followUpMinutes.value = Math.min(
+    FOLLOW_UP_MAX_MINUTES,
+    Math.max(FOLLOW_UP_MIN_MINUTES, Math.round(value))
+  );
+}
+
 const TONE_OPTIONS = [
   {
     value: 'warm_friendly',
@@ -232,6 +247,7 @@ async function loadFollowUp() {
 
 async function saveFollowUp() {
   if (!engineURL() || !flowPolicy.value) return;
+  clampFollowUpMinutes();
   isSavingFollowUp.value = true;
   try {
     const res = await fetch(
@@ -1115,15 +1131,25 @@ onMounted(fetchSettings);
           with-border
         >
           <label class="flex flex-col gap-1 max-w-xs">
-            <span class="text-sm font-medium text-n-slate-12">{{
-              t('COMVOR_SETTINGS.INSTRUCTIONS.FOLLOW_UP.LABEL')
-            }}</span>
+            <span class="text-sm font-medium text-n-slate-12">
+              {{ t('COMVOR_SETTINGS.INSTRUCTIONS.FOLLOW_UP.LABEL') }}
+              <span
+                :title="t('COMVOR_SETTINGS.INSTRUCTIONS.FOLLOW_UP.TOOLTIP')"
+                class="cursor-help text-n-slate-9"
+                >?</span
+              >
+            </span>
             <input
               v-model.number="followUpMinutes"
               type="number"
-              min="0"
+              :min="FOLLOW_UP_MIN_MINUTES"
+              :max="FOLLOW_UP_MAX_MINUTES"
               class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+              @blur="clampFollowUpMinutes"
             />
+            <span class="text-xs text-n-slate-11">{{
+              t('COMVOR_SETTINGS.INSTRUCTIONS.FOLLOW_UP.RANGE_HINT')
+            }}</span>
           </label>
         </SectionLayout>
 

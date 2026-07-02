@@ -147,7 +147,7 @@ describe('NotificationsTab.vue', () => {
     const saveNotifBtn = wrapper.find(
       '[data-testid="save-notifications-button"]'
     );
-    expect(saveNotifBtn.attributes('disabled')).toBe('true');
+    expect(saveNotifBtn.attributes('disabled')).toBe('');
   });
 
   it('allows saving once the new channel has a bot token', async () => {
@@ -173,7 +173,7 @@ describe('NotificationsTab.vue', () => {
     const saveNotifBtn = wrapper.find(
       '[data-testid="save-notifications-button"]'
     );
-    expect(saveNotifBtn.attributes('disabled')).toBe('false');
+    expect(saveNotifBtn.attributes('disabled')).toBeUndefined();
   });
 
   it('saves via PUT and clears the dirty flag on success', async () => {
@@ -201,5 +201,61 @@ describe('NotificationsTab.vue', () => {
     const body = JSON.parse(putCall[1].body);
     expect(body.muted_events).toEqual(['resolved']);
     expect(wrapper.vm.notificationsDirty).toBe(false);
+  });
+
+  it('still renders the handoff/resolved routing rows when the flow-config fetch fails', async () => {
+    global.fetch = vi.fn((url, opts) => {
+      if (url.endsWith('/flow-config')) {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({}),
+          text: () => Promise.resolve('server error'),
+        });
+      }
+      if (url.endsWith('/notifications') && opts?.method === 'PUT') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              channels: [],
+              subscriptions: [],
+              muted_events: [],
+            }),
+          text: () => Promise.resolve(''),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            channels: [],
+            subscriptions: [],
+            muted_events: [],
+          }),
+        text: () => Promise.resolve(''),
+      });
+    });
+
+    const wrapper = mount(NotificationsTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    // The fixed events (handoff/resolved) don't depend on flow-config, so
+    // the routing table still renders them even though the notifiable-stages
+    // fetch failed.
+    expect(wrapper.vm.notifiableStages).toEqual([]);
+    expect(wrapper.text()).toContain(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.EVENT_HANDOFF'
+    );
+    expect(wrapper.text()).toContain(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.EVENT_RESOLVED'
+    );
+    const routingRows = wrapper.findAll('[data-testid="routing-row"]');
+    expect(routingRows).toHaveLength(2);
   });
 });

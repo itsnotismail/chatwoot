@@ -142,10 +142,11 @@ defineExpose({
               )
             }}
           </span>
-          <woot-button
+          <button
+            type="button"
             data-testid="save-notifications-button"
-            :is-loading="isSavingNotifications"
-            :disabled="notificationsInvalid"
+            :disabled="notificationsInvalid || isSavingNotifications"
+            class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
             @click="saveNotifications"
           >
             {{
@@ -153,7 +154,7 @@ defineExpose({
                 ? t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SAVING')
                 : t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SAVE')
             }}
-          </woot-button>
+          </button>
         </div>
       </div>
     </template>

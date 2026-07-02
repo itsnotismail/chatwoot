@@ -21,6 +21,7 @@ const TOKEN_MASK = '********';
 // from the "muted" sentinel below.
 const ROUTE_DEFAULT = 'default';
 const ROUTE_MUTED = 'muted';
+const TEMPLATE_MAX = 1000;
 
 const isGuideOpen = ref(false);
 
@@ -301,9 +302,16 @@ const allRows = computed(() => {
             class="w-4 h-4 accent-n-brand"
             @change="setDefaultChannel(index)"
           />
-          <span class="text-xs font-medium text-n-slate-12">{{
-            t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.DEFAULT_LABEL')
-          }}</span>
+          <span class="text-xs font-medium text-n-slate-12">
+            {{ t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.DEFAULT_LABEL') }}
+            <span
+              :title="
+                t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.DEFAULT_TOOLTIP')
+              "
+              class="cursor-help text-n-slate-9"
+              >?</span
+            >
+          </span>
         </label>
 
         <label class="flex flex-col gap-1">
@@ -432,16 +440,32 @@ const allRows = computed(() => {
           v-if="typeof row.route === 'number'"
           class="flex flex-col gap-1 grow"
         >
-          <span class="text-xs font-medium text-n-slate-12">{{
-            t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.TEMPLATE_LABEL')
-          }}</span>
+          <span class="text-xs font-medium text-n-slate-12">
+            {{ t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.TEMPLATE_LABEL') }}
+            <span
+              :title="
+                t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.TEMPLATE_TOOLTIP')
+              "
+              class="cursor-help text-n-slate-9"
+              >?</span
+            >
+          </span>
           <input
             data-testid="route-template-input"
             type="text"
             :value="row.template"
+            :maxlength="TEMPLATE_MAX"
             class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
             @change="onRouteTemplate(row.index, $event.target.value)"
           />
+          <span class="self-end text-[11px] text-n-slate-9">
+            {{
+              t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.TEMPLATE_CHAR_COUNT', {
+                count: (row.template || '').length,
+                max: TEMPLATE_MAX,
+              })
+            }}
+          </span>
         </label>
       </div>
     </div>

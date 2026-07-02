@@ -313,7 +313,7 @@ describe('DiscoveryFlowTab.vue', () => {
     await flushPromises();
 
     expect(wrapper.vm.flowConfig.status).toBe('published');
-    expect(wrapper.text()).toContain('published');
+    expect(wrapper.text()).toContain('COMVOR_SETTINGS.STATUS_PILL.PUBLISHED');
     expect(wrapper.text()).not.toContain('PRIOR_PUBLISH_HARD_ERROR');
   });
 
@@ -395,5 +395,150 @@ describe('DiscoveryFlowTab.vue', () => {
       ).length
     ).toBeGreaterThanOrEqual(2); // the PUT + the reload GET
     expect(wrapper.text()).not.toContain('UNSAVED_CHANGES');
+  });
+
+  it('the save-draft button renders as a real native button element', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    const saveBtn = wrapper.find('[data-testid="save-draft-button"]');
+    expect(saveBtn.exists()).toBe(true);
+    expect(saveBtn.element.tagName).toBe('BUTTON');
+  });
+
+  it('clicking Publish opens the confirmation modal instead of posting immediately', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+    global.fetch.mockClear();
+
+    await wrapper.find('[data-testid="publish-button"]').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="publish-confirm-modal"]').exists()).toBe(
+      true
+    );
+    expect(
+      global.fetch.mock.calls.some(call =>
+        call[0].endsWith('/flow-config/publish')
+      )
+    ).toBe(false);
+  });
+
+  it('confirming the publish modal POSTs publish and closes the modal', async () => {
+    mockFetch();
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="publish-button"]').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    await wrapper
+      .find('[data-testid="publish-modal-confirm"]')
+      .trigger('click');
+    await flushPromises();
+
+    expect(
+      global.fetch.mock.calls.some(call =>
+        call[0].endsWith('/flow-config/publish')
+      )
+    ).toBe(true);
+    expect(wrapper.find('[data-testid="publish-confirm-modal"]').exists()).toBe(
+      false
+    );
+  });
+
+  it('cancelling the publish modal does not POST publish', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="publish-button"]').trigger('click');
+    await wrapper.vm.$nextTick();
+    global.fetch.mockClear();
+
+    await wrapper.find('[data-testid="publish-modal-cancel"]').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="publish-confirm-modal"]').exists()).toBe(
+      false
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('the publish modal renders soft-wall consequences from soft_warnings', async () => {
+    mockFetch();
+    global.fetch = vi.fn((url, opts) => {
+      if (url.endsWith('/flow-config/publish') && opts?.method === 'POST') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ ...flowConfig, status: 'published' }),
+          text: () => Promise.resolve(''),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            ...flowConfig,
+            soft_warnings: [
+              {
+                flow_key: 'sales',
+                stage_key: 'order_drafting',
+                capability: 'payment.share',
+                kind: 'soft',
+                message: 'no connector provides payment.share',
+              },
+            ],
+          }),
+        text: () => Promise.resolve(''),
+      });
+    });
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="publish-button"]').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    const modal = wrapper.find('[data-testid="publish-confirm-modal"]');
+    expect(modal.exists()).toBe(true);
+    const consequences = modal.find(
+      '[data-testid="publish-modal-consequences"]'
+    );
+    expect(consequences.exists()).toBe(true);
+    expect(
+      consequences
+        .find('[data-testid="publish-modal-consequence-item"]')
+        .exists()
+    ).toBe(true);
+    expect(consequences.text()).toContain(
+      'COMVOR_SETTINGS.DISCOVERY.PUBLISH_MODAL.SOFT_WARNING'
+    );
+  });
+
+  it('the status pill maps raw status values to i18n labels', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    const pill = wrapper.find('[data-testid="status-pill"]');
+    expect(pill.text()).toBe('COMVOR_SETTINGS.STATUS_PILL.DEFAULTS');
   });
 });

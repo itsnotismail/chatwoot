@@ -14,8 +14,24 @@ const businessCategory = ref('');
 const verticals = ref([]);
 const businessName = ref('');
 const businessDescription = ref('');
+const botReach = ref('prepare_orders');
 const submitting = ref(false);
 const error = ref('');
+
+const BOT_REACH_OPTIONS = [
+  {
+    value: 'answer_only',
+    labelKey: 'COMVOR_SETTINGS.ONBOARDING.BOT_REACH.ANSWER_ONLY',
+  },
+  {
+    value: 'prepare_orders',
+    labelKey: 'COMVOR_SETTINGS.ONBOARDING.BOT_REACH.PREPARE_ORDERS',
+  },
+  {
+    value: 'share_payment',
+    labelKey: 'COMVOR_SETTINGS.ONBOARDING.BOT_REACH.SHARE_PAYMENT',
+  },
+];
 
 const canSubmit = computed(
   () =>
@@ -51,6 +67,7 @@ async function submit() {
           business_category: businessCategory.value,
           business_name: businessName.value.trim(),
           business_description: businessDescription.value.trim(),
+          bot_reach: botReach.value,
         }),
       }
     );
@@ -124,6 +141,26 @@ async function submit() {
         "
       />
     </label>
+
+    <div class="flex flex-col gap-2">
+      <span class="text-sm font-medium text-n-slate-12">
+        {{ t('COMVOR_SETTINGS.ONBOARDING.BOT_REACH.LABEL') }}
+      </span>
+      <label
+        v-for="opt in BOT_REACH_OPTIONS"
+        :key="opt.value"
+        class="flex items-center gap-2 text-sm text-n-slate-12"
+      >
+        <input
+          v-model="botReach"
+          type="radio"
+          name="bot-reach"
+          :value="opt.value"
+          class="w-4 h-4 accent-n-brand"
+        />
+        {{ t(opt.labelKey) }}
+      </label>
+    </div>
 
     <p v-if="error" class="text-sm text-n-ruby-9">{{ error }}</p>
 

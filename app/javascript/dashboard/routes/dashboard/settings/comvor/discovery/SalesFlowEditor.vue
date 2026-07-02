@@ -147,9 +147,20 @@ function toggleGuidance(stageKey) {
         </div>
 
         <label v-if="stage.has_action" class="flex flex-col gap-1">
-          <span class="text-xs font-medium text-n-slate-12">{{
-            t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.WHO_COMPLETES_LABEL')
-          }}</span>
+          <span class="text-xs font-medium text-n-slate-12">
+            {{
+              t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.WHO_COMPLETES_LABEL')
+            }}
+            <span
+              :title="
+                t(
+                  'COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.WHO_COMPLETES_TOOLTIP'
+                )
+              "
+              class="cursor-help text-n-slate-9"
+              >?</span
+            >
+          </span>
           <select
             data-testid="who-completes-select"
             :value="stage.action_mode || 'auto'"
@@ -172,9 +183,16 @@ function toggleGuidance(stageKey) {
         </label>
 
         <div v-if="stage.stage_key === cutoffKey" class="flex flex-col gap-1">
-          <span class="text-xs font-medium text-n-slate-12">{{
-            t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.FINISH_LABEL')
-          }}</span>
+          <span class="text-xs font-medium text-n-slate-12">
+            {{ t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.FINISH_LABEL') }}
+            <span
+              :title="
+                t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.FINISH_TOOLTIP')
+              "
+              class="cursor-help text-n-slate-9"
+              >?</span
+            >
+          </span>
           <div class="flex items-center gap-4">
             <label class="flex items-center gap-1.5 text-xs">
               <input
@@ -240,9 +258,18 @@ function toggleGuidance(stageKey) {
               class="w-4 h-4 accent-n-brand"
               @change="setNotifyEnabled(stage, $event.target.checked)"
             />
-            <span class="text-xs font-medium text-n-slate-12">{{
-              t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.NOTIFY_TOGGLE_LABEL')
-            }}</span>
+            <span class="text-xs font-medium text-n-slate-12">
+              {{
+                t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.NOTIFY_TOGGLE_LABEL')
+              }}
+              <span
+                :title="
+                  t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.NOTIFY_TOOLTIP')
+                "
+                class="cursor-help text-n-slate-9"
+                >?</span
+              >
+            </span>
           </label>
           <div v-if="stage.notify_enabled" class="flex flex-col gap-1 ml-6">
             <span class="text-xs font-medium text-n-slate-12">{{
