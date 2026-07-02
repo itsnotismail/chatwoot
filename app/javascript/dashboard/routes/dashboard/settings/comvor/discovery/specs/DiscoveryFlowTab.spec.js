@@ -15,20 +15,55 @@ const flowConfig = {
     {
       flow_key: 'sales',
       mode: 'ordered',
+      display_name: 'Sales',
+      description: '',
       stages: [
         {
           stage_key: 'discovery',
+          display_name: 'Discovery',
+          description: 'Greets and answers questions',
           guidance: 'greet',
           action_tool: '',
+          has_action: false,
+          notifiable: false,
+          notify_enabled: false,
+          notify_guidance: '',
           on_complete: 'continue',
           in_scope: true,
         },
         {
           stage_key: 'order_drafting',
+          display_name: 'Order drafting',
+          description: 'Collects order details',
           guidance: 'collect',
           action_tool: '',
+          has_action: false,
+          notifiable: true,
+          notify_enabled: false,
+          notify_guidance: '',
           on_complete: 'resolve',
           in_scope: false,
+        },
+      ],
+    },
+    {
+      flow_key: 'support',
+      mode: 'unordered',
+      display_name: 'Support',
+      description: '',
+      stages: [
+        {
+          stage_key: 'refund_request',
+          display_name: 'Refund request',
+          description: 'Handles refund requests',
+          guidance: 'be polite',
+          action_tool: '',
+          has_action: false,
+          notifiable: false,
+          notify_enabled: false,
+          notify_guidance: '',
+          on_complete: 'continue',
+          in_scope: true,
         },
       ],
     },
@@ -83,31 +118,49 @@ function mockFetch({ publishResponse, putResponse } = {}) {
 describe('DiscoveryFlowTab.vue', () => {
   beforeEach(mockFetch);
 
-  it('loads and renders a FlowEditor per flow with scope + wall info', async () => {
+  it('defaults to the sales sub-tab, rendering the SalesFlowEditor with scope + wall info', async () => {
     const wrapper = mount(DiscoveryFlowTab, {
       props: { accountId: '7', engineUrl: 'http://engine' },
       global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
     });
     await flushPromises();
     const text = wrapper.text();
-    expect(text).toContain('discovery');
-    expect(text).toContain('order_drafting');
+    expect(text).toContain('Discovery');
+    expect(text).toContain('Order drafting');
     // the walled stage surfaces its hard-error message somewhere
     expect(text).toContain('order.draft');
+    // support flow is not rendered on the sales sub-tab
+    expect(text).not.toContain('Refund request');
     // fetched only flow-config (connectors/notifications moved to their own tabs)
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('accumulates edits from FlowEditor and PUTs only the changed stages on save', async () => {
+  it('switching to the support sub-tab renders FlowEditor for the unordered flow', async () => {
     const wrapper = mount(DiscoveryFlowTab, {
       props: { accountId: '7', engineUrl: 'http://engine' },
       global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
     });
     await flushPromises();
 
-    // Simulate an edit coming from FlowEditor (real child component, not stubbed).
-    const select = wrapper.find('select[data-testid="on-complete-select"]');
-    await select.setValue('handoff');
+    await wrapper.find('[data-testid="sub-tab-support"]').trigger('click');
+    await flushPromises();
+
+    const text = wrapper.text();
+    expect(text).toContain('refund_request');
+    expect(text).not.toContain('Discovery');
+  });
+
+  it('accumulates edits from SalesFlowEditor and PUTs only the changed stages on save', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    // Simulate an edit coming from SalesFlowEditor (real child component, not
+    // stubbed): flip the cutoff stage's finish choice via its radio.
+    const radio = wrapper.find('input[data-testid="finish-handoff-radio"]');
+    await radio.setValue(true);
 
     expect(wrapper.text()).toContain('UNSAVED_CHANGES');
 
@@ -123,13 +176,44 @@ describe('DiscoveryFlowTab.vue', () => {
     expect(body.stages).toHaveLength(1);
     expect(body.stages[0]).toMatchObject({
       flow_key: 'sales',
-      stage_key: 'discovery',
+      stage_key: 'order_drafting',
       on_complete: 'handoff',
-      enabled_reads: [],
     });
     expect(body.policy).toMatchObject(flowConfig.policy);
     // fetched flow-config on mount, plus the PUT and a reload after save.
     expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('moving the cutoff sends a minimal PUT body: only flow_key/stage_key/on_complete per stage', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    // Move the cutoff from order_drafting to discovery via the journey strip.
+    const discoveryStep = wrapper.find(
+      '[data-testid="journey-step"][data-stage-key="discovery"]'
+    );
+    await discoveryStep.trigger('click');
+
+    await wrapper.vm.saveDraft();
+    await flushPromises();
+
+    const putCall = global.fetch.mock.calls.find(
+      call => call[1]?.method === 'PUT'
+    );
+    const body = JSON.parse(putCall[1].body);
+    expect(body.stages).toHaveLength(2);
+    body.stages.forEach(stage => {
+      expect(Object.keys(stage).sort()).toEqual(
+        ['flow_key', 'on_complete', 'stage_key'].sort()
+      );
+    });
+    const newCutoff = body.stages.find(s => s.stage_key === 'discovery');
+    const oldCutoff = body.stages.find(s => s.stage_key === 'order_drafting');
+    expect(newCutoff.on_complete).toBe('resolve'); // carries over previous finish choice
+    expect(oldCutoff.on_complete).toBe('continue');
   });
 
   it('publish 422 renders hard-error messages inline and does not flip status', async () => {
@@ -259,8 +343,8 @@ describe('DiscoveryFlowTab.vue', () => {
     await flushPromises();
 
     // Make a local edit so the dirty pill shows.
-    const select = wrapper.find('select[data-testid="on-complete-select"]');
-    await select.setValue('handoff');
+    const radio = wrapper.find('input[data-testid="finish-handoff-radio"]');
+    await radio.setValue(true);
     expect(wrapper.text()).toContain('UNSAVED_CHANGES');
 
     global.fetch.mockClear();

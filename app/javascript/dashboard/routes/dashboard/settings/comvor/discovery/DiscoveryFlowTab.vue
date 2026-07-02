@@ -4,6 +4,8 @@ import { useI18n } from 'vue-i18n';
 import { useStore } from 'vuex';
 import { useAlert } from 'dashboard/composables';
 import FlowEditor from './FlowEditor.vue';
+import SalesFlowEditor from './SalesFlowEditor.vue';
+import { flowSummary } from './summary.js';
 
 const props = defineProps({
   accountId: { type: String, required: true },
@@ -17,6 +19,18 @@ const isLoading = ref(false);
 const isSaving = ref(false);
 const isPublishing = ref(false);
 const flowConfig = ref(null);
+// Which sub-tab is showing: the ordered (sales) flow or the unordered
+// (support) flow. Defaults to sales.
+const activeSubTab = ref('sales');
+const salesFlow = computed(() =>
+  (flowConfig.value?.flows || []).find(f => f.mode === 'ordered')
+);
+const supportFlow = computed(() =>
+  (flowConfig.value?.flows || []).find(f => f.mode === 'unordered')
+);
+const salesSummary = computed(() =>
+  salesFlow.value ? flowSummary(salesFlow.value, t) : ''
+);
 const draftStages = ref({});
 const flowDirty = ref(false);
 const hasUnsavedChanges = computed(() => flowDirty.value);
@@ -69,7 +83,12 @@ async function loadAll() {
 
 function onStageUpdate(update) {
   const key = `${update.flow_key}:${update.stage_key}`;
-  draftStages.value = { ...draftStages.value, [key]: update };
+  // Merge partial updates for the same stage so, e.g., a notify-only edit
+  // doesn't clobber an earlier guidance-only edit on the same stage.
+  draftStages.value = {
+    ...draftStages.value,
+    [key]: { ...draftStages.value[key], ...update },
+  };
   flowDirty.value = true;
 }
 
@@ -77,15 +96,26 @@ async function saveDraft() {
   if (!props.engineUrl) return;
   isSaving.value = true;
   try {
-    const stages = Object.values(draftStages.value).map(s => ({
-      flow_key: s.flow_key,
-      stage_key: s.stage_key,
-      action_mode: s.action_mode,
-      on_complete: s.on_complete,
-      guidance: s.guidance,
-      skipped: s.skipped,
-      enabled_reads: [],
-    }));
+    // Minimal PUT: send only the fields that were actually changed (plus
+    // the identifying keys). FlowEditor (support flow, full-field editor)
+    // always includes `skipped`, so its stages also carry an explicit
+    // `enabled_reads: []` the way the API previously expected; SalesFlowEditor
+    // sends only the specific field(s) a control changed.
+    const stages = Object.values(draftStages.value).map(s => {
+      const stage = { flow_key: s.flow_key, stage_key: s.stage_key };
+      [
+        'action_mode',
+        'on_complete',
+        'guidance',
+        'skipped',
+        'notify_enabled',
+        'notify_guidance',
+      ].forEach(field => {
+        if (s[field] !== undefined) stage[field] = s[field];
+      });
+      if (s.skipped !== undefined) stage.enabled_reads = [];
+      return stage;
+    });
     const res = await fetch(url('/flow-config'), {
       method: 'PUT',
       headers: authHeaders(),
@@ -167,6 +197,7 @@ defineExpose({
   softWarnings,
   hasUnsavedChanges,
   flowDirty,
+  activeSubTab,
 });
 </script>
 
@@ -182,6 +213,43 @@ defineExpose({
           class="text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700"
           >{{ flowConfig.status }}</span
         >
+      </div>
+
+      <p
+        v-if="activeSubTab === 'sales' && salesSummary"
+        data-testid="sales-summary"
+        class="text-sm text-n-slate-11"
+      >
+        {{ salesSummary }}
+      </p>
+
+      <div class="flex gap-1 rounded-lg bg-n-slate-2 p-1 w-fit">
+        <button
+          type="button"
+          data-testid="sub-tab-sales"
+          class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
+          :class="
+            activeSubTab === 'sales'
+              ? 'bg-n-solid-2 text-n-slate-12 shadow-sm'
+              : 'text-n-slate-10'
+          "
+          @click="activeSubTab = 'sales'"
+        >
+          {{ t('COMVOR_SETTINGS.DISCOVERY.SUB_TABS.SALES') }}
+        </button>
+        <button
+          type="button"
+          data-testid="sub-tab-support"
+          class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
+          :class="
+            activeSubTab === 'support'
+              ? 'bg-n-solid-2 text-n-slate-12 shadow-sm'
+              : 'text-n-slate-10'
+          "
+          @click="activeSubTab = 'support'"
+        >
+          {{ t('COMVOR_SETTINGS.DISCOVERY.SUB_TABS.SUPPORT') }}
+        </button>
       </div>
 
       <div
@@ -213,16 +281,26 @@ defineExpose({
       </div>
 
       <div
-        v-for="flow in flowConfig.flows"
-        :key="flow.flow_key"
+        v-if="activeSubTab === 'sales' && salesFlow"
+        class="border rounded-md p-3"
+      >
+        <SalesFlowEditor
+          :flow="salesFlow"
+          :walls="flowConfig.hard_errors || []"
+          @update:stage="onStageUpdate"
+        />
+      </div>
+
+      <div
+        v-if="activeSubTab === 'support' && supportFlow"
         class="border rounded-md p-3"
       >
         <h4 class="font-semibold mb-2">
-          {{ flow.flow_key }}
-          <span class="text-xs opacity-60">({{ flow.mode }})</span>
+          {{ supportFlow.flow_key }}
+          <span class="text-xs opacity-60">({{ supportFlow.mode }})</span>
         </h4>
         <FlowEditor
-          :flow="flow"
+          :flow="supportFlow"
           :walls="flowConfig.hard_errors || []"
           @update:stage="onStageUpdate"
         />

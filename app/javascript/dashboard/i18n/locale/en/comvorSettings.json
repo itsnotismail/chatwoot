@@ -63,6 +63,35 @@
       "PUBLISH_SOFT_WARNINGS_TITLE": "Warnings",
       "SAVE_HARD_ERRORS_TITLE": "Draft saved, but it can't be published yet:",
       "VERSION_CONFLICT_RELOADED": "This configuration was changed elsewhere — reloaded the latest version. Please re-apply your edits.",
+      "SUB_TABS": {
+        "SALES": "Sales flow",
+        "SUPPORT": "Support intents"
+      },
+      "SUMMARY": {
+        "AND": "and",
+        "FINISH_HANDOFF": "hands over to your team",
+        "FINISH_RESOLVE": "resolves the conversation",
+        "NO_STAGES": "Your bot has no active steps yet.",
+        "TEMPLATE": "Your bot {actions} — then {finish}."
+      },
+      "JOURNEY": {
+        "YOUR_TEAM": "🧑 Your team",
+        "ARROW": "→"
+      },
+      "SALES_EDITOR": {
+        "FINISH_LABEL": "When this step completes",
+        "FINISH_HANDOFF": "Hands over to your team",
+        "FINISH_RESOLVE": "Resolves the conversation",
+        "WHO_COMPLETES_LABEL": "Who completes this step",
+        "WHO_COMPLETES_AUTO": "Bot completes it",
+        "WHO_COMPLETES_DEFERRED": "Bot prepares, your team completes",
+        "ADJUST_GUIDANCE": "Adjust",
+        "GUIDANCE_LABEL": "Guidance",
+        "NOTIFY_TOGGLE_LABEL": "Notify your team when this step completes",
+        "NOTIFY_GUIDANCE_LABEL": "What should the notification include?",
+        "HANDLED_BY_TEAM": "Handled by your team",
+        "CHAR_COUNT": "{count}/{max}"
+      },
       "POLICY": {
         "TITLE": "Policy",
         "DEBOUNCE_MS": "debounce_ms",
