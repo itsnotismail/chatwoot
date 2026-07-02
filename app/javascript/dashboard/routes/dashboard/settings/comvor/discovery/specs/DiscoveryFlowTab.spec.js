@@ -10,6 +10,7 @@ vi.mock('dashboard/composables', () => ({ useAlert: vi.fn() }));
 
 const flowConfig = {
   status: 'defaults',
+  version_id: 3,
   flows: [
     {
       flow_key: 'sales',
@@ -51,9 +52,12 @@ const flowConfig = {
   soft_warnings: [],
 };
 
-function mockFetch({ publishResponse } = {}) {
+function mockFetch({ publishResponse, putResponse } = {}) {
   let currentStatus = 'defaults';
   global.fetch = vi.fn((url, opts) => {
+    if (putResponse && url.endsWith('/flow-config') && opts?.method === 'PUT') {
+      return Promise.resolve(putResponse);
+    }
     if (url.endsWith('/flow-config/publish') && opts?.method === 'POST') {
       if (publishResponse) return Promise.resolve(publishResponse);
       currentStatus = 'published';
@@ -274,6 +278,86 @@ describe('DiscoveryFlowTab.vue', () => {
       '[data-testid="save-notifications-button"]'
     );
     expect(saveNotifBtn.attributes('disabled')).toBe('false');
+  });
+
+  it('sends expected_version_id from the loaded config on save', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    await wrapper.vm.saveDraft();
+    await flushPromises();
+
+    const putCall = global.fetch.mock.calls.find(
+      call => call[1]?.method === 'PUT'
+    );
+    const body = JSON.parse(putCall[1].body);
+    expect(body.expected_version_id).toBe(3);
+  });
+
+  it('shows the save wall panel when the refreshed draft has hard errors', async () => {
+    // The fixture's flow-config carries a hard error; a successful save must
+    // surface it in the container panel with the save-specific heading.
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    // Panel hidden on plain load (only per-stage wall text is shown).
+    expect(wrapper.text()).not.toContain('SAVE_HARD_ERRORS_TITLE');
+
+    await wrapper.vm.saveDraft();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(
+      'COMVOR_SETTINGS.DISCOVERY.SAVE_HARD_ERRORS_TITLE'
+    );
+    expect(wrapper.vm.hardErrors).toHaveLength(1);
+  });
+
+  it('reloads and clears dirty state when the save hits a version conflict (409)', async () => {
+    mockFetch({
+      putResponse: {
+        ok: false,
+        status: 409,
+        json: () =>
+          Promise.resolve({
+            error: 'version_conflict',
+            current_version_id: 9,
+          }),
+        text: () => Promise.resolve('version conflict'),
+      },
+    });
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    // Make a local edit so the dirty pill shows.
+    const select = wrapper.find('select[data-testid="on-complete-select"]');
+    await select.setValue('handoff');
+    expect(wrapper.text()).toContain('UNSAVED_CHANGES');
+
+    global.fetch.mockClear();
+    await wrapper.vm.saveDraft();
+    await flushPromises();
+
+    const { useAlert } = await import('dashboard/composables');
+    expect(useAlert).toHaveBeenCalledWith(
+      'COMVOR_SETTINGS.DISCOVERY.VERSION_CONFLICT_RELOADED'
+    );
+    // Server wins: flow-config re-fetched, local edits discarded, pill gone.
+    const calledUrls = global.fetch.mock.calls.map(call => call[0]);
+    expect(
+      calledUrls.filter(
+        u => u.endsWith('/flow-config') && !u.endsWith('/publish')
+      ).length
+    ).toBeGreaterThanOrEqual(2); // the PUT + the reload GET
+    expect(wrapper.text()).not.toContain('UNSAVED_CHANGES');
   });
 
   it('saving the flow draft does not reload (and clobber) notifications', async () => {

@@ -60,6 +60,8 @@
       "PUBLISH_DISABLED_UNSAVED_HINT": "Save your changes before publishing.",
       "PUBLISH_HARD_ERRORS_TITLE": "This flow can't be published yet:",
       "PUBLISH_SOFT_WARNINGS_TITLE": "Warnings",
+      "SAVE_HARD_ERRORS_TITLE": "Draft saved, but it can't be published yet:",
+      "VERSION_CONFLICT_RELOADED": "This configuration was changed elsewhere — reloaded the latest version. Please re-apply your edits.",
       "POLICY": {
         "TITLE": "Policy",
         "DEBOUNCE_MS": "debounce_ms",
