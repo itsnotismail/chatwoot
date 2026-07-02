@@ -2,7 +2,18 @@ import { flushPromises, mount } from '@vue/test-utils';
 import DiscoveryFlowTab from '../DiscoveryFlowTab.vue';
 
 // Minimal i18n + store + alert mocks (components use these composables).
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: k => k }) }));
+// SOFT_WARNING is interpolated (not just echoed) so tests can verify the
+// panel renders merchant-facing display names, not raw capability keys.
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({
+    t: (key, params) => {
+      if (key === 'COMVOR_SETTINGS.DISCOVERY.PUBLISH_MODAL.SOFT_WARNING') {
+        return `${params.stage} is currently unavailable — customers will be handed to your team at this step.`;
+      }
+      return key;
+    },
+  }),
+}));
 vi.mock('vuex', () => ({
   useStore: () => ({ getters: { getCurrentUser: { access_token: 'tok' } } }),
 }));
@@ -526,8 +537,52 @@ describe('DiscoveryFlowTab.vue', () => {
         .find('[data-testid="publish-modal-consequence-item"]')
         .exists()
     ).toBe(true);
+    // Merchant-facing sentence built from the stage's display name (looked
+    // up via warn.stage_key against the loaded flowConfig) — not the raw
+    // capability key or the backend's internal message string.
     expect(consequences.text()).toContain(
-      'COMVOR_SETTINGS.DISCOVERY.PUBLISH_MODAL.SOFT_WARNING'
+      'Order drafting is currently unavailable — customers will be handed to your team at this step.'
+    );
+    expect(consequences.text()).not.toContain('payment.share');
+    expect(consequences.text()).not.toContain('no connector provides');
+  });
+
+  it('the amber warning panel renders merchant-language sentences, not raw capability keys', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    wrapper.vm.softWarnings = [
+      {
+        flow_key: 'sales',
+        stage_key: 'order_drafting',
+        capability: 'payment.share',
+        kind: 'soft',
+        message: 'no connector provides payment.share',
+      },
+    ];
+    await wrapper.vm.$nextTick();
+
+    const panel = wrapper.find('[data-testid="soft-warnings-panel"]');
+    expect(panel.exists()).toBe(true);
+    expect(panel.text()).toContain(
+      'Order drafting is currently unavailable — customers will be handed to your team at this step.'
+    );
+    expect(panel.text()).not.toContain('payment.share');
+    expect(panel.text()).not.toContain('no connector provides');
+  });
+
+  it('stageDisplayName falls back to the stage_key when the stage cannot be found', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    expect(wrapper.vm.stageDisplayName('sales', 'does_not_exist')).toBe(
+      'does_not_exist'
     );
   });
 

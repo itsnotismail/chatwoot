@@ -1,10 +1,17 @@
 <script setup>
 import { useI18n } from 'vue-i18n';
 
-defineProps({
+const props = defineProps({
   summary: { type: String, default: '' },
   softWarnings: { type: Array, default: () => [] },
   isPublishing: { type: Boolean, default: false },
+  // Looks up a stage's merchant-facing display name by (flow_key, stage_key)
+  // so the soft-warning list can speak in plain language instead of showing
+  // raw capability keys. Falls back to the stage_key itself when unset.
+  stageDisplayName: {
+    type: Function,
+    default: (flowKey, stageKey) => stageKey,
+  },
 });
 
 const emit = defineEmits(['confirm', 'cancel']);
@@ -49,7 +56,7 @@ const { t } = useI18n();
           >
             {{
               t('COMVOR_SETTINGS.DISCOVERY.PUBLISH_MODAL.SOFT_WARNING', {
-                capability: warn.capability,
+                stage: props.stageDisplayName(warn.flow_key, warn.stage_key),
               })
             }}
           </li>

@@ -20,7 +20,7 @@ const error = ref('');
 
 const BOT_REACH_OPTIONS = [
   {
-    value: 'answer_only',
+    value: 'answers_only',
     labelKey: 'COMVOR_SETTINGS.ONBOARDING.BOT_REACH.ANSWER_ONLY',
   },
   {
@@ -28,7 +28,7 @@ const BOT_REACH_OPTIONS = [
     labelKey: 'COMVOR_SETTINGS.ONBOARDING.BOT_REACH.PREPARE_ORDERS',
   },
   {
-    value: 'share_payment',
+    value: 'payment_instructions',
     labelKey: 'COMVOR_SETTINGS.ONBOARDING.BOT_REACH.SHARE_PAYMENT',
   },
 ];

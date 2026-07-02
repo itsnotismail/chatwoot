@@ -81,7 +81,7 @@
       "PUBLISH_MODAL": {
         "TITLE": "Publish this flow?",
         "CONSEQUENCES_TITLE": "Before you publish",
-        "SOFT_WARNING": "{capability} is unavailable — customers will be handed to your team at that step.",
+        "SOFT_WARNING": "{stage} is currently unavailable — customers will be handed to your team at this step.",
         "CONFIRM": "Confirm & publish",
         "CANCEL": "Cancel"
       },

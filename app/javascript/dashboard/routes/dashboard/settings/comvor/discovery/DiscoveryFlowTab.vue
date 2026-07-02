@@ -32,6 +32,18 @@ const supportFlow = computed(() =>
 const salesSummary = computed(() =>
   salesFlow.value ? flowSummary(salesFlow.value, t) : ''
 );
+
+// Looks up a stage's merchant-facing display name by flow_key/stage_key so
+// soft-warning panels can speak in plain language instead of showing raw
+// capability keys (e.g. "order.draft"). Falls back to the stage_key itself
+// if the stage can't be found (e.g. a stale flowConfig).
+function stageDisplayName(flowKey, stageKey) {
+  const flow = (flowConfig.value?.flows || []).find(
+    f => f.flow_key === flowKey
+  );
+  const stage = flow?.stages?.find(s => s.stage_key === stageKey);
+  return stage?.display_name || stageKey;
+}
 const draftStages = ref({});
 const flowDirty = ref(false);
 const hasUnsavedChanges = computed(() => flowDirty.value);
@@ -237,6 +249,7 @@ defineExpose({
   hasUnsavedChanges,
   flowDirty,
   activeSubTab,
+  stageDisplayName,
 });
 </script>
 
@@ -309,6 +322,7 @@ defineExpose({
 
       <div
         v-if="softWarnings.length"
+        data-testid="soft-warnings-panel"
         class="border border-amber-300 bg-amber-50 dark:bg-amber-900/30 dark:border-amber-700 rounded-md p-3 text-sm text-amber-700 dark:text-amber-300"
       >
         <h4 class="font-semibold mb-2">
@@ -316,7 +330,11 @@ defineExpose({
         </h4>
         <ul class="list-disc list-inside">
           <li v-for="(warn, idx) in softWarnings" :key="idx">
-            {{ warn.capability }} — {{ warn.message }}
+            {{
+              t('COMVOR_SETTINGS.DISCOVERY.PUBLISH_MODAL.SOFT_WARNING', {
+                stage: stageDisplayName(warn.flow_key, warn.stage_key),
+              })
+            }}
           </li>
         </ul>
       </div>
@@ -385,6 +403,7 @@ defineExpose({
         :summary="salesSummary"
         :soft-warnings="flowConfig.soft_warnings || []"
         :is-publishing="isPublishing"
+        :stage-display-name="stageDisplayName"
         @confirm="confirmPublish"
         @cancel="cancelPublishModal"
       />
