@@ -41,7 +41,8 @@
       "KNOWLEDGE": "Knowledge",
       "INSTRUCTIONS": "Instructions",
       "CONNECTOR": "Connector",
-      "DISCOVERY": "Discovery Flow"
+      "DISCOVERY": "Discovery Flow",
+      "NOTIFICATIONS": "Notifications"
     },
     "DISCOVERY": {
       "STATUS": "Status",
@@ -270,6 +271,11 @@
         "TITLE": "Custom instructions",
         "DESCRIPTION": "Any other rules for how your AI should handle customer scenarios.",
         "PLACEHOLDER": "E.g. \"When a customer asks about prices, ask for their location first.\""
+      },
+      "FOLLOW_UP": {
+        "TITLE": "Follow-up time",
+        "LABEL": "Minutes before follow-up",
+        "HINT": "How long after a customer goes quiet before the bot sends one friendly follow-up."
       }
     }
   }

@@ -52,38 +52,11 @@ const flowConfig = {
   soft_warnings: [],
 };
 
-function mockFetch({
-  publishResponse,
-  putResponse,
-  connectorsPutResponse,
-  connectorsBody,
-} = {}) {
+function mockFetch({ publishResponse, putResponse } = {}) {
   let currentStatus = 'defaults';
-  let currentConnectors = connectorsBody || {
-    enabled: [],
-    providers: {},
-    available: ['ewity'],
-    disabled_capabilities: [],
-  };
   global.fetch = vi.fn((url, opts) => {
     if (putResponse && url.endsWith('/flow-config') && opts?.method === 'PUT') {
       return Promise.resolve(putResponse);
-    }
-    if (url.endsWith('/connectors') && opts?.method === 'PUT') {
-      if (connectorsPutResponse) return Promise.resolve(connectorsPutResponse);
-      const putBody = JSON.parse(opts.body);
-      currentConnectors = {
-        ...currentConnectors,
-        enabled: putBody.enabled,
-        providers: putBody.providers,
-        disabled_capabilities: putBody.disabled_capabilities || [],
-      };
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve(currentConnectors),
-        text: () => Promise.resolve(''),
-      });
     }
     if (url.endsWith('/flow-config/publish') && opts?.method === 'POST') {
       if (publishResponse) return Promise.resolve(publishResponse);
@@ -98,9 +71,6 @@ function mockFetch({
     let body = {};
     if (url.endsWith('/flow-config'))
       body = { ...flowConfig, status: currentStatus };
-    else if (url.endsWith('/connectors')) body = currentConnectors;
-    else if (url.endsWith('/notifications'))
-      body = { channels: [], subscriptions: [] };
     return Promise.resolve({
       ok: true,
       status: 200,
@@ -124,8 +94,8 @@ describe('DiscoveryFlowTab.vue', () => {
     expect(text).toContain('order_drafting');
     // the walled stage surfaces its hard-error message somewhere
     expect(text).toContain('order.draft');
-    // fetched all three endpoints
-    expect(global.fetch).toHaveBeenCalledTimes(3);
+    // fetched only flow-config (connectors/notifications moved to their own tabs)
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
   it('accumulates edits from FlowEditor and PUTs only the changed stages on save', async () => {
@@ -158,10 +128,8 @@ describe('DiscoveryFlowTab.vue', () => {
       enabled_reads: [],
     });
     expect(body.policy).toMatchObject(flowConfig.policy);
-    // fetched all three endpoints on mount, plus the PUT and a scoped
-    // flow-config-only reload after save (connectors/notifications are not
-    // re-fetched, so a flow save can't clobber their pending edits).
-    expect(global.fetch).toHaveBeenCalledTimes(5);
+    // fetched flow-config on mount, plus the PUT and a reload after save.
+    expect(global.fetch).toHaveBeenCalledTimes(3);
   });
 
   it('publish 422 renders hard-error messages inline and does not flip status', async () => {
@@ -231,79 +199,6 @@ describe('DiscoveryFlowTab.vue', () => {
     expect(wrapper.vm.flowConfig.status).toBe('published');
     expect(wrapper.text()).toContain('published');
     expect(wrapper.text()).not.toContain('PRIOR_PUBLISH_HARD_ERROR');
-  });
-
-  it('editing notifications marks the unsaved indicator dirty', async () => {
-    const wrapper = mount(DiscoveryFlowTab, {
-      props: { accountId: '7', engineUrl: 'http://engine' },
-      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
-    });
-    await flushPromises();
-
-    expect(wrapper.text()).not.toContain('UNSAVED_CHANGES');
-
-    wrapper.vm.onNotificationsUpdate({
-      channels: ['email'],
-      subscriptions: [],
-    });
-    await wrapper.vm.$nextTick();
-
-    expect(wrapper.text()).toContain('UNSAVED_CHANGES');
-  });
-
-  it('blocks saving notifications when a new channel has no bot token, with an inline hint', async () => {
-    const wrapper = mount(DiscoveryFlowTab, {
-      props: { accountId: '7', engineUrl: 'http://engine' },
-      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
-    });
-    await flushPromises();
-
-    wrapper.vm.onNotificationsUpdate({
-      channels: [
-        {
-          id: 0,
-          kind: 'telegram',
-          config: { bot_token: '', chat_id: '' },
-          enabled: true,
-        },
-      ],
-      subscriptions: [],
-    });
-    await wrapper.vm.$nextTick();
-
-    expect(wrapper.text()).toContain(
-      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.NEW_CHANNEL_TOKEN_REQUIRED_HINT'
-    );
-    const saveNotifBtn = wrapper.find(
-      '[data-testid="save-notifications-button"]'
-    );
-    expect(saveNotifBtn.attributes('disabled')).toBe('true');
-  });
-
-  it('allows saving notifications once the new channel has a bot token', async () => {
-    const wrapper = mount(DiscoveryFlowTab, {
-      props: { accountId: '7', engineUrl: 'http://engine' },
-      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
-    });
-    await flushPromises();
-
-    wrapper.vm.onNotificationsUpdate({
-      channels: [
-        {
-          id: 0,
-          kind: 'telegram',
-          config: { bot_token: 'brand-new-token', chat_id: '' },
-          enabled: true,
-        },
-      ],
-      subscriptions: [],
-    });
-    await wrapper.vm.$nextTick();
-
-    const saveNotifBtn = wrapper.find(
-      '[data-testid="save-notifications-button"]'
-    );
-    expect(saveNotifBtn.attributes('disabled')).toBe('false');
   });
 
   it('sends expected_version_id from the loaded config on save', async () => {
@@ -384,124 +279,5 @@ describe('DiscoveryFlowTab.vue', () => {
       ).length
     ).toBeGreaterThanOrEqual(2); // the PUT + the reload GET
     expect(wrapper.text()).not.toContain('UNSAVED_CHANGES');
-  });
-
-  it('saving the flow draft does not reload (and clobber) notifications', async () => {
-    const wrapper = mount(DiscoveryFlowTab, {
-      props: { accountId: '7', engineUrl: 'http://engine' },
-      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
-    });
-    await flushPromises();
-
-    global.fetch.mockClear();
-
-    await wrapper.vm.saveDraft();
-    await flushPromises();
-
-    const calledUrls = global.fetch.mock.calls.map(call => call[0]);
-    expect(
-      calledUrls.some(
-        u => u.endsWith('/flow-config') || u.includes('/flow-config?')
-      )
-    ).toBe(true);
-    expect(calledUrls.some(u => u.endsWith('/notifications'))).toBe(false);
-  });
-
-  it('includes disabled_capabilities in the connectors PUT body', async () => {
-    mockFetch({
-      connectorsBody: {
-        enabled: ['ewity'],
-        providers: {},
-        available: ['ewity'],
-        disabled_capabilities: ['order.draft'],
-      },
-    });
-    const wrapper = mount(DiscoveryFlowTab, {
-      props: { accountId: '7', engineUrl: 'http://engine' },
-      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
-    });
-    await flushPromises();
-
-    await wrapper.vm.saveConnectors();
-    await flushPromises();
-
-    const putCall = global.fetch.mock.calls.find(
-      call => call[0].endsWith('/connectors') && call[1]?.method === 'PUT'
-    );
-    expect(putCall).toBeTruthy();
-    const body = JSON.parse(putCall[1].body);
-    expect(body.disabled_capabilities).toEqual(['order.draft']);
-  });
-
-  it('re-fetches flow-config after saving connectors when the disabled-capabilities set changed', async () => {
-    mockFetch({
-      connectorsBody: {
-        enabled: ['ewity'],
-        providers: {},
-        available: ['ewity'],
-        disabled_capabilities: [],
-      },
-    });
-    const wrapper = mount(DiscoveryFlowTab, {
-      props: { accountId: '7', engineUrl: 'http://engine' },
-      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
-    });
-    await flushPromises();
-
-    // Simulate the editor disabling a capability.
-    wrapper.vm.onConnectorsUpdate({
-      enabled: ['ewity'],
-      providers: {},
-      disabled_capabilities: ['order.draft'],
-    });
-    await wrapper.vm.$nextTick();
-
-    global.fetch.mockClear();
-    await wrapper.vm.saveConnectors();
-    await flushPromises();
-
-    const calls = global.fetch.mock.calls;
-    const putIdx = calls.findIndex(
-      call => call[0].endsWith('/connectors') && call[1]?.method === 'PUT'
-    );
-    const flowConfigIdx = calls.findIndex(
-      call => call[0].endsWith('/flow-config') && call[1]?.method !== 'PUT'
-    );
-    expect(putIdx).toBeGreaterThanOrEqual(0);
-    expect(flowConfigIdx).toBeGreaterThan(putIdx);
-  });
-
-  it('does not re-fetch flow-config after saving connectors when the disabled-capabilities set is unchanged', async () => {
-    mockFetch({
-      connectorsBody: {
-        enabled: ['ewity'],
-        providers: {},
-        available: ['ewity'],
-        disabled_capabilities: ['order.draft'],
-      },
-    });
-    const wrapper = mount(DiscoveryFlowTab, {
-      props: { accountId: '7', engineUrl: 'http://engine' },
-      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
-    });
-    await flushPromises();
-
-    // Edit something unrelated to disabled_capabilities (providers stays put,
-    // disabled_capabilities stays the same set).
-    wrapper.vm.onConnectorsUpdate({
-      enabled: ['ewity'],
-      providers: {},
-      disabled_capabilities: ['order.draft'],
-    });
-    await wrapper.vm.$nextTick();
-
-    global.fetch.mockClear();
-    await wrapper.vm.saveConnectors();
-    await flushPromises();
-
-    const calledUrls = global.fetch.mock.calls
-      .filter(call => call[1]?.method !== 'PUT')
-      .map(call => call[0]);
-    expect(calledUrls.some(u => u.endsWith('/flow-config'))).toBe(false);
   });
 });

@@ -9,6 +9,8 @@ import BaseSettingsHeader from '../components/BaseSettingsHeader.vue';
 import SectionLayout from '../account/components/SectionLayout.vue';
 import OnboardingForm from './OnboardingForm.vue';
 import DiscoveryFlowTab from './discovery/DiscoveryFlowTab.vue';
+import ConnectorsEditor from './discovery/ConnectorsEditor.vue';
+import NotificationsTab from './notifications/NotificationsTab.vue';
 
 const { t } = useI18n();
 const store = useStore();
@@ -46,6 +48,22 @@ const permissionTestMessage = ref({});
 const permissionTestReason = ref({});
 const permissionGuideOpen = ref({});
 const tokenGuideOpen = ref(false);
+
+// Multi-connector management (enabled list + provider-on-conflict), merged
+// in from the old Discovery Flow tab. Capability toggles are intentionally
+// NOT rendered here — they're admin-level now — so soft-warnings is always
+// passed as [] to ConnectorsEditor.
+const connectors = ref(null);
+const isSavingConnectors = ref(false);
+const connectorsDirty = ref(false);
+
+// Follow-up time (Instructions tab): minutes in the UI, seconds
+// (`follow_up_after`) on the wire. The other policy fields are no longer
+// editable here but must round-trip through the flow-config PUT unchanged.
+const followUpMinutes = ref(0);
+const flowPolicy = ref(null);
+const flowVersionId = ref(0);
+const isSavingFollowUp = ref(false);
 
 const TONE_OPTIONS = [
   {
@@ -144,6 +162,106 @@ function engineURL() {
   return window.globalConfig?.COMVOR_ENGINE_URL || '';
 }
 
+async function loadConnectors() {
+  if (!engineURL()) return;
+  try {
+    const res = await fetch(
+      `${engineURL()}/api/accounts/${accountId}/connectors`,
+      { headers: authHeaders() }
+    );
+    if (res.ok) connectors.value = await res.json();
+  } catch (e) {
+    useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
+  }
+}
+
+function onConnectorsUpdate(update) {
+  connectors.value = { ...connectors.value, ...update };
+  connectorsDirty.value = true;
+}
+
+async function saveConnectors() {
+  if (!engineURL()) return;
+  isSavingConnectors.value = true;
+  try {
+    const res = await fetch(
+      `${engineURL()}/api/accounts/${accountId}/connectors`,
+      {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          enabled: connectors.value.enabled,
+          providers: connectors.value.providers,
+          disabled_capabilities: connectors.value.disabled_capabilities || [],
+        }),
+      }
+    );
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || `HTTP ${res.status}`);
+    }
+    await loadConnectors();
+    connectorsDirty.value = false;
+    useAlert(t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE_SUCCESS'));
+  } catch (e) {
+    useAlert(e.message || t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE_ERROR'));
+  } finally {
+    isSavingConnectors.value = false;
+  }
+}
+
+async function loadFollowUp() {
+  if (!engineURL()) return;
+  try {
+    const res = await fetch(
+      `${engineURL()}/api/accounts/${accountId}/flow-config`,
+      { headers: authHeaders() }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      flowPolicy.value = data.policy;
+      flowVersionId.value = data.version_id || 0;
+      followUpMinutes.value = Math.round(
+        (data.policy?.follow_up_after || 0) / 60
+      );
+    }
+  } catch (e) {
+    useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
+  }
+}
+
+async function saveFollowUp() {
+  if (!engineURL() || !flowPolicy.value) return;
+  isSavingFollowUp.value = true;
+  try {
+    const res = await fetch(
+      `${engineURL()}/api/accounts/${accountId}/flow-config`,
+      {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          stages: [],
+          policy: {
+            ...flowPolicy.value,
+            follow_up_after: Math.round(followUpMinutes.value * 60),
+          },
+          expected_version_id: flowVersionId.value,
+        }),
+      }
+    );
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || `HTTP ${res.status}`);
+    }
+    await loadFollowUp();
+    useAlert(t('COMVOR_SETTINGS.SAVE_SUCCESS'));
+  } catch (e) {
+    useAlert(e.message || t('COMVOR_SETTINGS.SAVE_ERROR'));
+  } finally {
+    isSavingFollowUp.value = false;
+  }
+}
+
 async function fetchSettings() {
   if (!engineURL()) return;
   isLoading.value = true;
@@ -227,6 +345,7 @@ async function fetchSettings() {
         /* non-fatal */
       }
     }
+    await Promise.all([loadConnectors(), loadFollowUp()]);
   } catch (e) {
     useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
   } finally {
@@ -469,6 +588,12 @@ onMounted(fetchSettings);
         <woot-tabs-item
           :index="5"
           :name="t('COMVOR_SETTINGS.TABS.DISCOVERY')"
+          :show-badge="false"
+          is-compact
+        />
+        <woot-tabs-item
+          :index="6"
+          :name="t('COMVOR_SETTINGS.TABS.NOTIFICATIONS')"
           :show-badge="false"
           is-compact
         />
@@ -983,6 +1108,38 @@ onMounted(fetchSettings);
             }}
           </button>
         </div>
+
+        <SectionLayout
+          :title="t('COMVOR_SETTINGS.INSTRUCTIONS.FOLLOW_UP.TITLE')"
+          :description="t('COMVOR_SETTINGS.INSTRUCTIONS.FOLLOW_UP.HINT')"
+          with-border
+        >
+          <label class="flex flex-col gap-1 max-w-xs">
+            <span class="text-sm font-medium text-n-slate-12">{{
+              t('COMVOR_SETTINGS.INSTRUCTIONS.FOLLOW_UP.LABEL')
+            }}</span>
+            <input
+              v-model.number="followUpMinutes"
+              type="number"
+              min="0"
+              class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+            />
+          </label>
+        </SectionLayout>
+
+        <div class="flex justify-end px-6 py-4">
+          <button
+            class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
+            :disabled="isSavingFollowUp"
+            @click="saveFollowUp"
+          >
+            {{
+              isSavingFollowUp
+                ? t('COMVOR_SETTINGS.SAVING')
+                : t('COMVOR_SETTINGS.SAVE')
+            }}
+          </button>
+        </div>
       </template>
 
       <!-- ── Tab 4: Connector ── -->
@@ -1156,11 +1313,51 @@ onMounted(fetchSettings);
             }}
           </button>
         </div>
+
+        <SectionLayout
+          v-if="connectors"
+          :title="t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.TITLE')"
+          with-border
+        >
+          <ConnectorsEditor
+            :connectors="connectors"
+            :soft-warnings="[]"
+            @update:connectors="onConnectorsUpdate"
+          />
+        </SectionLayout>
+
+        <div
+          v-if="connectors"
+          class="flex items-center justify-end gap-3 px-6 py-4"
+        >
+          <span v-if="connectorsDirty" class="text-xs text-amber-600">
+            {{ t('COMVOR_SETTINGS.DISCOVERY.UNSAVED_CHANGES') }}
+          </span>
+          <button
+            class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
+            :disabled="isSavingConnectors"
+            @click="saveConnectors"
+          >
+            {{
+              isSavingConnectors
+                ? t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVING')
+                : t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE')
+            }}
+          </button>
+        </div>
       </template>
 
       <!-- ── Tab 5: Discovery Flow ── -->
       <template v-else-if="selectedTab === 5">
         <DiscoveryFlowTab
+          :account-id="String(accountId)"
+          :engine-url="engineURL()"
+        />
+      </template>
+
+      <!-- ── Tab 6: Notifications ── -->
+      <template v-else-if="selectedTab === 6">
+        <NotificationsTab
           :account-id="String(accountId)"
           :engine-url="engineURL()"
         />
