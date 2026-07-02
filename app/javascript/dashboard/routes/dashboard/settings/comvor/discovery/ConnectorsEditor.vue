@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
   connectors: { type: Object, required: true },
+  softWarnings: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['update:connectors']);
@@ -21,6 +22,7 @@ const state = reactive({
   enabled: [],
   providers: {},
   available: [],
+  disabledCapabilities: [],
 });
 
 watch(
@@ -29,6 +31,7 @@ watch(
     state.enabled = [...(connectors.enabled || [])];
     state.providers = { ...(connectors.providers || {}) };
     state.available = [...(connectors.available || [])];
+    state.disabledCapabilities = [...(connectors.disabled_capabilities || [])];
   },
   { immediate: true }
 );
@@ -37,10 +40,22 @@ const capabilitiesNeedingProvider = computed(() =>
   Object.keys(state.providers)
 );
 
+// Union of capability names surfaced via disabled_capabilities and via
+// softWarnings (which the backend emits when an enabled connector provides
+// a capability that's been disabled), de-duplicated.
+const toggleableCapabilities = computed(() => {
+  const names = [
+    ...state.disabledCapabilities,
+    ...props.softWarnings.map(w => w.capability),
+  ];
+  return [...new Set(names)];
+});
+
 function emitUpdate() {
   emit('update:connectors', {
     enabled: [...state.enabled],
     providers: { ...state.providers },
+    disabled_capabilities: [...state.disabledCapabilities],
   });
 }
 
@@ -57,6 +72,17 @@ function toggleConnector(connector, checked) {
 
 function onProviderChange(capability, value) {
   state.providers = { ...state.providers, [capability]: value };
+  emitUpdate();
+}
+
+function toggleCapability(capability, checked) {
+  if (checked) {
+    state.disabledCapabilities = state.disabledCapabilities.filter(
+      c => c !== capability
+    );
+  } else if (!state.disabledCapabilities.includes(capability)) {
+    state.disabledCapabilities = [...state.disabledCapabilities, capability];
+  }
   emitUpdate();
 }
 </script>
@@ -99,5 +125,29 @@ function onProviderChange(capability, value) {
         </option>
       </select>
     </label>
+
+    <div v-if="toggleableCapabilities.length" class="flex flex-col gap-2">
+      <h5 class="text-xs font-semibold text-n-slate-12">
+        {{ t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.CAPABILITIES_TITLE') }}
+      </h5>
+      <label
+        v-for="capability in toggleableCapabilities"
+        :key="capability"
+        class="flex items-center gap-2"
+      >
+        <input
+          data-testid="capability-checkbox"
+          type="checkbox"
+          :checked="!state.disabledCapabilities.includes(capability)"
+          class="w-4 h-4 accent-n-brand"
+          @change="toggleCapability(capability, $event.target.checked)"
+        />
+        <span class="text-xs font-medium text-n-slate-12">{{
+          t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.CAPABILITY_ENABLED_LABEL', {
+            capability,
+          })
+        }}</span>
+      </label>
+    </div>
   </div>
 </template>

@@ -55,4 +55,48 @@ describe('ConnectorsEditor.vue', () => {
     const lastEvent = emitted[emitted.length - 1][0];
     expect(lastEvent.enabled).toEqual([]);
   });
+
+  it('renders an unchecked capability box for a capability in disabled_capabilities, and re-enabling it removes it from the emitted array', async () => {
+    const wrapper = mountEditor({
+      connectors: {
+        ...connectors,
+        disabled_capabilities: ['order.draft'],
+      },
+    });
+
+    const capabilityCheckboxes = wrapper.findAll(
+      'input[data-testid="capability-checkbox"]'
+    );
+    expect(capabilityCheckboxes).toHaveLength(1);
+    expect(capabilityCheckboxes[0].element.checked).toBe(false);
+
+    await capabilityCheckboxes[0].setValue(true); // re-enable order.draft
+
+    const emitted = wrapper.emitted('update:connectors');
+    expect(emitted).toBeTruthy();
+    const lastEvent = emitted[emitted.length - 1][0];
+    expect(lastEvent.disabled_capabilities).not.toContain('order.draft');
+  });
+
+  it('unchecking a capability box named only in softWarnings adds it to the emitted disabled_capabilities', async () => {
+    const wrapper = mountEditor({
+      connectors: { ...connectors, disabled_capabilities: [] },
+      softWarnings: [
+        { capability: 'order.draft', message: 'no connector provides it' },
+      ],
+    });
+
+    const capabilityCheckboxes = wrapper.findAll(
+      'input[data-testid="capability-checkbox"]'
+    );
+    expect(capabilityCheckboxes).toHaveLength(1);
+    expect(capabilityCheckboxes[0].element.checked).toBe(true); // not disabled yet
+
+    await capabilityCheckboxes[0].setValue(false); // disable order.draft
+
+    const emitted = wrapper.emitted('update:connectors');
+    expect(emitted).toBeTruthy();
+    const lastEvent = emitted[emitted.length - 1][0];
+    expect(lastEvent.disabled_capabilities).toContain('order.draft');
+  });
 });

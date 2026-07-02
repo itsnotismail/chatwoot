@@ -52,11 +52,38 @@ const flowConfig = {
   soft_warnings: [],
 };
 
-function mockFetch({ publishResponse, putResponse } = {}) {
+function mockFetch({
+  publishResponse,
+  putResponse,
+  connectorsPutResponse,
+  connectorsBody,
+} = {}) {
   let currentStatus = 'defaults';
+  let currentConnectors = connectorsBody || {
+    enabled: [],
+    providers: {},
+    available: ['ewity'],
+    disabled_capabilities: [],
+  };
   global.fetch = vi.fn((url, opts) => {
     if (putResponse && url.endsWith('/flow-config') && opts?.method === 'PUT') {
       return Promise.resolve(putResponse);
+    }
+    if (url.endsWith('/connectors') && opts?.method === 'PUT') {
+      if (connectorsPutResponse) return Promise.resolve(connectorsPutResponse);
+      const putBody = JSON.parse(opts.body);
+      currentConnectors = {
+        ...currentConnectors,
+        enabled: putBody.enabled,
+        providers: putBody.providers,
+        disabled_capabilities: putBody.disabled_capabilities || [],
+      };
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(currentConnectors),
+        text: () => Promise.resolve(''),
+      });
     }
     if (url.endsWith('/flow-config/publish') && opts?.method === 'POST') {
       if (publishResponse) return Promise.resolve(publishResponse);
@@ -71,8 +98,7 @@ function mockFetch({ publishResponse, putResponse } = {}) {
     let body = {};
     if (url.endsWith('/flow-config'))
       body = { ...flowConfig, status: currentStatus };
-    else if (url.endsWith('/connectors'))
-      body = { enabled: [], providers: {}, available: ['ewity'] };
+    else if (url.endsWith('/connectors')) body = currentConnectors;
     else if (url.endsWith('/notifications'))
       body = { channels: [], subscriptions: [] };
     return Promise.resolve({
@@ -379,5 +405,103 @@ describe('DiscoveryFlowTab.vue', () => {
       )
     ).toBe(true);
     expect(calledUrls.some(u => u.endsWith('/notifications'))).toBe(false);
+  });
+
+  it('includes disabled_capabilities in the connectors PUT body', async () => {
+    mockFetch({
+      connectorsBody: {
+        enabled: ['ewity'],
+        providers: {},
+        available: ['ewity'],
+        disabled_capabilities: ['order.draft'],
+      },
+    });
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    await wrapper.vm.saveConnectors();
+    await flushPromises();
+
+    const putCall = global.fetch.mock.calls.find(
+      call => call[0].endsWith('/connectors') && call[1]?.method === 'PUT'
+    );
+    expect(putCall).toBeTruthy();
+    const body = JSON.parse(putCall[1].body);
+    expect(body.disabled_capabilities).toEqual(['order.draft']);
+  });
+
+  it('re-fetches flow-config after saving connectors when the disabled-capabilities set changed', async () => {
+    mockFetch({
+      connectorsBody: {
+        enabled: ['ewity'],
+        providers: {},
+        available: ['ewity'],
+        disabled_capabilities: [],
+      },
+    });
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    // Simulate the editor disabling a capability.
+    wrapper.vm.onConnectorsUpdate({
+      enabled: ['ewity'],
+      providers: {},
+      disabled_capabilities: ['order.draft'],
+    });
+    await wrapper.vm.$nextTick();
+
+    global.fetch.mockClear();
+    await wrapper.vm.saveConnectors();
+    await flushPromises();
+
+    const calls = global.fetch.mock.calls;
+    const putIdx = calls.findIndex(
+      call => call[0].endsWith('/connectors') && call[1]?.method === 'PUT'
+    );
+    const flowConfigIdx = calls.findIndex(
+      call => call[0].endsWith('/flow-config') && call[1]?.method !== 'PUT'
+    );
+    expect(putIdx).toBeGreaterThanOrEqual(0);
+    expect(flowConfigIdx).toBeGreaterThan(putIdx);
+  });
+
+  it('does not re-fetch flow-config after saving connectors when the disabled-capabilities set is unchanged', async () => {
+    mockFetch({
+      connectorsBody: {
+        enabled: ['ewity'],
+        providers: {},
+        available: ['ewity'],
+        disabled_capabilities: ['order.draft'],
+      },
+    });
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    // Edit something unrelated to disabled_capabilities (providers stays put,
+    // disabled_capabilities stays the same set).
+    wrapper.vm.onConnectorsUpdate({
+      enabled: ['ewity'],
+      providers: {},
+      disabled_capabilities: ['order.draft'],
+    });
+    await wrapper.vm.$nextTick();
+
+    global.fetch.mockClear();
+    await wrapper.vm.saveConnectors();
+    await flushPromises();
+
+    const calledUrls = global.fetch.mock.calls
+      .filter(call => call[1]?.method !== 'PUT')
+      .map(call => call[0]);
+    expect(calledUrls.some(u => u.endsWith('/flow-config'))).toBe(false);
   });
 });

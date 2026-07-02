@@ -46,6 +46,14 @@ const hardErrorsTitleKey = ref(
 // expected_version_id so concurrent edits from another session 409 instead
 // of silently clobbering each other.
 const versionId = ref(0);
+// Snapshot (sorted, stringified) of disabled_capabilities as last loaded
+// from the backend — used to detect whether a connectors save actually
+// changed the disabled set, see the comment in saveConnectors below.
+const lastDisabledCapabilitiesSnapshot = ref('[]');
+
+function disabledCapabilitiesSnapshot(disabled) {
+  return JSON.stringify([...(disabled || [])].sort());
+}
 
 function applyFlowConfig(resp) {
   flowConfig.value = resp;
@@ -77,7 +85,12 @@ async function loadConnectors() {
   if (!props.engineUrl) return;
   try {
     const conn = await fetch(url('/connectors'), { headers: authHeaders() });
-    if (conn.ok) connectors.value = await conn.json();
+    if (conn.ok) {
+      connectors.value = await conn.json();
+      lastDisabledCapabilitiesSnapshot.value = disabledCapabilitiesSnapshot(
+        connectors.value.disabled_capabilities
+      );
+    }
   } catch (e) {
     useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
   }
@@ -134,12 +147,14 @@ async function saveConnectors() {
   if (!props.engineUrl) return;
   isSavingConnectors.value = true;
   try {
+    const disabledBeforeSave = lastDisabledCapabilitiesSnapshot.value;
     const res = await fetch(url('/connectors'), {
       method: 'PUT',
       headers: authHeaders(),
       body: JSON.stringify({
         enabled: connectors.value.enabled,
         providers: connectors.value.providers,
+        disabled_capabilities: connectors.value.disabled_capabilities || [],
       }),
     });
     if (!res.ok) {
@@ -148,6 +163,15 @@ async function saveConnectors() {
     }
     await loadConnectors();
     connectorsDirty.value = false;
+    // Other save handlers only reload their own section, so a save can't
+    // clobber another section's pending edits (see saveDraft/saveNotifications
+    // above/below). Disabled capabilities are a deliberate exception: they
+    // change which stages are in-scope, so if the saved disabled set differs
+    // from what we last loaded, also refresh flow-config to pick up the
+    // updated soft_warnings / stage scoping right away.
+    if (lastDisabledCapabilitiesSnapshot.value !== disabledBeforeSave) {
+      await loadFlowConfig();
+    }
     useAlert(t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE_SUCCESS'));
   } catch (e) {
     useAlert(e.message || t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE_ERROR'));
@@ -394,6 +418,7 @@ defineExpose({
         </h4>
         <ConnectorsEditor
           :connectors="connectors"
+          :soft-warnings="softWarnings"
           @update:connectors="onConnectorsUpdate"
         />
         <div class="flex items-center justify-end gap-3 px-1 py-2">
