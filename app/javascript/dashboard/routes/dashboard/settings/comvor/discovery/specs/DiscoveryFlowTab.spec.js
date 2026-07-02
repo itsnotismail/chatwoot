@@ -135,7 +135,7 @@ describe('DiscoveryFlowTab.vue', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('switching to the support sub-tab renders FlowEditor for the unordered flow', async () => {
+  it('switching to the support sub-tab renders SupportIntentsEditor for the unordered flow', async () => {
     const wrapper = mount(DiscoveryFlowTab, {
       props: { accountId: '7', engineUrl: 'http://engine' },
       global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
@@ -146,8 +146,40 @@ describe('DiscoveryFlowTab.vue', () => {
     await flushPromises();
 
     const text = wrapper.text();
-    expect(text).toContain('refund_request');
+    expect(text).toContain('Refund request');
     expect(text).not.toContain('Discovery');
+  });
+
+  it('toggling a support intent off PUTs a minimal body: only flow_key/stage_key/skipped', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="sub-tab-support"]').trigger('click');
+    await flushPromises();
+
+    const toggle = wrapper.find('[data-testid="enable-toggle"]');
+    await toggle.setValue(false);
+
+    await wrapper.vm.saveDraft();
+    await flushPromises();
+
+    const putCall = global.fetch.mock.calls.find(
+      call => call[1]?.method === 'PUT'
+    );
+    expect(putCall).toBeTruthy();
+    const body = JSON.parse(putCall[1].body);
+    expect(body.stages).toHaveLength(1);
+    expect(body.stages[0]).toMatchObject({
+      flow_key: 'support',
+      stage_key: 'refund_request',
+      skipped: true,
+    });
+    expect(Object.keys(body.stages[0]).sort()).toEqual(
+      ['flow_key', 'skipped', 'stage_key'].sort()
+    );
   });
 
   it('accumulates edits from SalesFlowEditor and PUTs only the changed stages on save', async () => {

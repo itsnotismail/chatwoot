@@ -115,6 +115,24 @@
         "ACTION_MODE_DEFERRED": "Confirm-only",
         "SKIPPED_LABEL": "Skip this stage"
       },
+      "SUPPORT_EDITOR": {
+        "ENABLE_TOGGLE_LABEL": "Enable this intent",
+        "WHO_COMPLETES_LABEL": "Who completes this",
+        "WHO_COMPLETES_AUTO": "Bot completes it",
+        "WHO_COMPLETES_DEFERRED": "Bot prepares, your team completes",
+        "FINISH_LABEL": "After handling",
+        "FINISH_HANDOFF": "Hands over to your team",
+        "FINISH_RESOLVE": "Resolves the conversation",
+        "NOTIFY_TOGGLE_LABEL": "Notify your team when this intent completes",
+        "NOTIFY_GUIDANCE_LABEL": "What should the notification include?",
+        "GUIDANCE_LABEL": "Special instructions (optional)",
+        "GUIDANCE_HINT": "Your return & cancellation policies already apply (see the Policies tab). Use this only for extra steps — e.g. \"always ask for a photo of the damaged item\".",
+        "CHAR_COUNT": "{count}/{max}",
+        "READ_WALL_POINTER": "Connect one in the Connector tab.",
+        "ACTION_WALL_BADGE": "No connector for this action yet — consider switching who completes it.",
+        "EXPAND_LABEL": "Expand",
+        "COLLAPSE_LABEL": "Collapse"
+      },
       "CONNECTORS": {
         "TITLE": "Connectors",
         "SAVE": "Save Connectors",

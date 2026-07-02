@@ -3,8 +3,8 @@ import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useStore } from 'vuex';
 import { useAlert } from 'dashboard/composables';
-import FlowEditor from './FlowEditor.vue';
 import SalesFlowEditor from './SalesFlowEditor.vue';
+import SupportIntentsEditor from './SupportIntentsEditor.vue';
 import { flowSummary } from './summary.js';
 
 const props = defineProps({
@@ -97,10 +97,10 @@ async function saveDraft() {
   isSaving.value = true;
   try {
     // Minimal PUT: send only the fields that were actually changed (plus
-    // the identifying keys). FlowEditor (support flow, full-field editor)
-    // always includes `skipped`, so its stages also carry an explicit
-    // `enabled_reads: []` the way the API previously expected; SalesFlowEditor
-    // sends only the specific field(s) a control changed.
+    // the identifying keys). Both SalesFlowEditor and SupportIntentsEditor
+    // emit single- or few-field payloads per control; the backend preserves
+    // every omitted field on partial PUTs, so we never need to round-trip
+    // the full stage here.
     const stages = Object.values(draftStages.value).map(s => {
       const stage = { flow_key: s.flow_key, stage_key: s.stage_key };
       [
@@ -113,7 +113,6 @@ async function saveDraft() {
       ].forEach(field => {
         if (s[field] !== undefined) stage[field] = s[field];
       });
-      if (s.skipped !== undefined) stage.enabled_reads = [];
       return stage;
     });
     const res = await fetch(url('/flow-config'), {
@@ -295,11 +294,7 @@ defineExpose({
         v-if="activeSubTab === 'support' && supportFlow"
         class="border rounded-md p-3"
       >
-        <h4 class="font-semibold mb-2">
-          {{ supportFlow.flow_key }}
-          <span class="text-xs opacity-60">({{ supportFlow.mode }})</span>
-        </h4>
-        <FlowEditor
+        <SupportIntentsEditor
           :flow="supportFlow"
           :walls="flowConfig.hard_errors || []"
           @update:stage="onStageUpdate"
