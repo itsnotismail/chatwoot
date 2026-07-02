@@ -17,6 +17,10 @@ const isLoading = ref(false);
 const isSavingNotifications = ref(false);
 const notifications = ref(null);
 const notificationsDirty = ref(false);
+// Read-only: fetched purely to learn which stages are notifiable (their
+// stage_key + display_name) so the routing table can offer one row per
+// stage-completion event. Never PUT back from here.
+const notifiableStages = ref([]);
 // Mirrors the backend's 422: a new (id-less) Telegram channel must carry a
 // non-empty, non-masked bot_token before it can be saved.
 const notificationsInvalid = computed(() =>
@@ -34,6 +38,24 @@ function url(suffix) {
   return `${props.engineUrl}/api/accounts/${props.accountId}${suffix}`;
 }
 
+function extractNotifiableStages(flowConfig) {
+  return (flowConfig?.flows || [])
+    .flatMap(f => f.stages || [])
+    .filter(s => s.notifiable)
+    .map(s => ({ stage_key: s.stage_key, display_name: s.display_name }));
+}
+
+async function loadNotifiableStages() {
+  if (!props.engineUrl) return;
+  try {
+    const fc = await fetch(url('/flow-config'), { headers: authHeaders() });
+    if (fc.ok)
+      notifiableStages.value = extractNotifiableStages(await fc.json());
+  } catch (e) {
+    useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
+  }
+}
+
 async function loadNotifications() {
   if (!props.engineUrl) return;
   isLoading.value = true;
@@ -42,6 +64,7 @@ async function loadNotifications() {
       headers: authHeaders(),
     });
     if (notif.ok) notifications.value = await notif.json();
+    await loadNotifiableStages();
   } catch (e) {
     useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
   } finally {
@@ -64,6 +87,7 @@ async function saveNotifications() {
       body: JSON.stringify({
         channels: notifications.value.channels,
         subscriptions: notifications.value.subscriptions,
+        muted_events: notifications.value.muted_events || [],
       }),
     });
     if (!res.ok) {
@@ -90,6 +114,7 @@ defineExpose({
   notifications,
   notificationsDirty,
   notificationsInvalid,
+  notifiableStages,
 });
 </script>
 
@@ -103,6 +128,7 @@ defineExpose({
         </h4>
         <NotificationsEditor
           :notifications="notifications"
+          :notifiable-stages="notifiableStages"
           @update:notifications="onNotificationsUpdate"
         />
         <div class="flex items-center justify-end gap-3 px-1 py-2">

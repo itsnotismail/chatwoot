@@ -15,14 +15,47 @@ function mockFetch({ putResponse } = {}) {
       return Promise.resolve({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ channels: [], subscriptions: [] }),
+        json: () =>
+          Promise.resolve({
+            channels: [],
+            subscriptions: [],
+            muted_events: [],
+          }),
+        text: () => Promise.resolve(''),
+      });
+    }
+    if (url.endsWith('/flow-config')) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            flows: [
+              {
+                flow_key: 'sales',
+                stages: [
+                  {
+                    stage_key: 'order_drafting',
+                    display_name: 'Order taking',
+                    notifiable: true,
+                  },
+                  {
+                    stage_key: 'discovery',
+                    display_name: 'Discovery',
+                    notifiable: false,
+                  },
+                ],
+              },
+            ],
+          }),
         text: () => Promise.resolve(''),
       });
     }
     return Promise.resolve({
       ok: true,
       status: 200,
-      json: () => Promise.resolve({ channels: [], subscriptions: [] }),
+      json: () =>
+        Promise.resolve({ channels: [], subscriptions: [], muted_events: [] }),
       text: () => Promise.resolve(''),
     });
   });
@@ -45,6 +78,29 @@ describe('NotificationsTab.vue', () => {
     expect(wrapper.text()).toContain(
       'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.TITLE'
     );
+  });
+
+  it('also fetches flow-config (read-only) and derives notifiable stages for the routing table', async () => {
+    const wrapper = mount(NotificationsTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://engine/api/accounts/7/flow-config',
+      expect.any(Object)
+    );
+    // Only the notifiable stage is kept; the non-notifiable one is dropped.
+    expect(wrapper.vm.notifiableStages).toEqual([
+      { stage_key: 'order_drafting', display_name: 'Order taking' },
+    ]);
+    // flow-config is never PUT from this tab.
+    expect(
+      global.fetch.mock.calls.some(
+        call => call[0].endsWith('/flow-config') && call[1]?.method === 'PUT'
+      )
+    ).toBe(false);
   });
 
   it('editing notifications marks the tab dirty', async () => {
@@ -130,6 +186,7 @@ describe('NotificationsTab.vue', () => {
     wrapper.vm.onNotificationsUpdate({
       channels: [],
       subscriptions: [],
+      muted_events: ['resolved'],
     });
     await wrapper.vm.$nextTick();
     expect(wrapper.vm.notificationsDirty).toBe(true);
@@ -141,6 +198,8 @@ describe('NotificationsTab.vue', () => {
       call => call[0].endsWith('/notifications') && call[1]?.method === 'PUT'
     );
     expect(putCall).toBeTruthy();
+    const body = JSON.parse(putCall[1].body);
+    expect(body.muted_events).toEqual(['resolved']);
     expect(wrapper.vm.notificationsDirty).toBe(false);
   });
 });
