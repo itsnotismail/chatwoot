@@ -8,7 +8,40 @@ vi.mock('vuex', () => ({
 }));
 vi.mock('dashboard/composables', () => ({ useAlert: vi.fn() }));
 
-function mockFetch({ putResponse } = {}) {
+function flowConfigResponse() {
+  return {
+    ok: true,
+    status: 200,
+    json: () =>
+      Promise.resolve({
+        version_id: 42,
+        flows: [
+          {
+            flow_key: 'sales',
+            stages: [
+              {
+                stage_key: 'order_drafting',
+                display_name: 'Order taking',
+                notifiable: true,
+                notify_enabled: true,
+                notify_guidance: '',
+              },
+              {
+                stage_key: 'discovery',
+                display_name: 'Discovery',
+                notifiable: false,
+                notify_enabled: false,
+                notify_guidance: '',
+              },
+            ],
+          },
+        ],
+      }),
+    text: () => Promise.resolve(''),
+  };
+}
+
+function mockFetch({ putResponse, flowConfigPutResponse } = {}) {
   global.fetch = vi.fn((url, opts) => {
     if (url.endsWith('/notifications') && opts?.method === 'PUT') {
       if (putResponse) return Promise.resolve(putResponse);
@@ -24,32 +57,12 @@ function mockFetch({ putResponse } = {}) {
         text: () => Promise.resolve(''),
       });
     }
+    if (url.endsWith('/flow-config') && opts?.method === 'PUT') {
+      if (flowConfigPutResponse) return Promise.resolve(flowConfigPutResponse);
+      return Promise.resolve(flowConfigResponse());
+    }
     if (url.endsWith('/flow-config')) {
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () =>
-          Promise.resolve({
-            flows: [
-              {
-                flow_key: 'sales',
-                stages: [
-                  {
-                    stage_key: 'order_drafting',
-                    display_name: 'Order taking',
-                    notifiable: true,
-                  },
-                  {
-                    stage_key: 'discovery',
-                    display_name: 'Discovery',
-                    notifiable: false,
-                  },
-                ],
-              },
-            ],
-          }),
-        text: () => Promise.resolve(''),
-      });
+      return Promise.resolve(flowConfigResponse());
     }
     return Promise.resolve({
       ok: true,
@@ -80,7 +93,7 @@ describe('NotificationsTab.vue', () => {
     );
   });
 
-  it('also fetches flow-config (read-only) and derives notifiable stages for the routing table', async () => {
+  it('fetches flow-config and derives notifiable stages (with notify fields + flow_key) for the routing table', async () => {
     const wrapper = mount(NotificationsTab, {
       props: { accountId: '7', engineUrl: 'http://engine' },
       global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
@@ -93,9 +106,16 @@ describe('NotificationsTab.vue', () => {
     );
     // Only the notifiable stage is kept; the non-notifiable one is dropped.
     expect(wrapper.vm.notifiableStages).toEqual([
-      { stage_key: 'order_drafting', display_name: 'Order taking' },
+      {
+        stage_key: 'order_drafting',
+        display_name: 'Order taking',
+        flow_key: 'sales',
+        notify_enabled: true,
+        notify_guidance: '',
+      },
     ]);
-    // flow-config is never PUT from this tab.
+    // flow-config is not PUT from this tab unless there are pending
+    // stage-notify edits (covered in a dedicated test below).
     expect(
       global.fetch.mock.calls.some(
         call => call[0].endsWith('/flow-config') && call[1]?.method === 'PUT'
@@ -287,6 +307,136 @@ describe('NotificationsTab.vue', () => {
     });
     await wrapper.vm.$nextTick();
 
+    expect(wrapper.vm.notificationsDirty).toBe(false);
+  });
+
+  // ── Stage-notify dual save ──
+  it('a stageNotify edit marks the tab dirty even with no other notification changes', async () => {
+    const wrapper = mount(NotificationsTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    expect(wrapper.vm.notificationsDirty).toBe(false);
+
+    wrapper.vm.onStageNotify({
+      stage_key: 'order_drafting',
+      notify_enabled: false,
+    });
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.vm.notificationsDirty).toBe(true);
+  });
+
+  it('saveNotifications also PUTs /flow-config with the pending stage-notify edits and expected_version_id', async () => {
+    const wrapper = mount(NotificationsTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    wrapper.vm.onStageNotify({
+      stage_key: 'order_drafting',
+      notify_enabled: false,
+      notify_guidance: 'quiet please',
+    });
+    await wrapper.vm.$nextTick();
+
+    await wrapper.vm.saveNotifications();
+    await flushPromises();
+
+    const notifPutCall = global.fetch.mock.calls.find(
+      call => call[0].endsWith('/notifications') && call[1]?.method === 'PUT'
+    );
+    expect(notifPutCall).toBeTruthy();
+
+    const flowPutCall = global.fetch.mock.calls.find(
+      call => call[0].endsWith('/flow-config') && call[1]?.method === 'PUT'
+    );
+    expect(flowPutCall).toBeTruthy();
+    const body = JSON.parse(flowPutCall[1].body);
+    expect(body.expected_version_id).toBe(42);
+    expect(body.stages).toEqual([
+      {
+        flow_key: 'sales',
+        stage_key: 'order_drafting',
+        notify_enabled: false,
+        notify_guidance: 'quiet please',
+      },
+    ]);
+  });
+
+  it('does not PUT /flow-config when there are no pending stage-notify edits', async () => {
+    const wrapper = mount(NotificationsTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    wrapper.vm.onNotificationsUpdate({
+      channels: [],
+      subscriptions: [],
+      muted_events: ['resolved'],
+    });
+    await wrapper.vm.$nextTick();
+
+    await wrapper.vm.saveNotifications();
+    await flushPromises();
+
+    expect(
+      global.fetch.mock.calls.some(
+        call => call[0].endsWith('/flow-config') && call[1]?.method === 'PUT'
+      )
+    ).toBe(false);
+  });
+
+  it('clears stageNotifyDraft and reloads after a successful dual save', async () => {
+    const wrapper = mount(NotificationsTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    wrapper.vm.onStageNotify({
+      stage_key: 'order_drafting',
+      notify_enabled: false,
+    });
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.notificationsDirty).toBe(true);
+
+    await wrapper.vm.saveNotifications();
+    await flushPromises();
+
+    expect(wrapper.vm.notificationsDirty).toBe(false);
+  });
+
+  it('handles a 409 on the flow-config PUT like DiscoveryFlowTab: alerts, reloads, and drops the local stage-notify edits', async () => {
+    mockFetch({
+      flowConfigPutResponse: {
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({}),
+        text: () => Promise.resolve('conflict'),
+      },
+    });
+
+    const wrapper = mount(NotificationsTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    wrapper.vm.onStageNotify({
+      stage_key: 'order_drafting',
+      notify_enabled: false,
+    });
+    await wrapper.vm.$nextTick();
+
+    await wrapper.vm.saveNotifications();
+    await flushPromises();
+
+    // Local stage-notify edits are dropped after the reload triggered by 409.
     expect(wrapper.vm.notificationsDirty).toBe(false);
   });
 });

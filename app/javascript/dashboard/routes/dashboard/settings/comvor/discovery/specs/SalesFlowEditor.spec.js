@@ -174,53 +174,24 @@ describe('SalesFlowEditor.vue', () => {
     });
   });
 
-  it('shows the notify toggle only when notifiable is true, and the guidance input only once enabled', async () => {
+  it('renders a pointer to the Notifications tab for a notifiable stage, with no notify toggle', () => {
     const wrapper = mountEditor();
     const cards = wrapper.findAll('[data-testid="stage-card"]');
-    // discovery: notifiable false -> no toggle
-    expect(cards[0].find('[data-testid="notify-toggle"]').exists()).toBe(false);
-    // order_drafting: notifiable true -> toggle present
-    const toggle = cards[1].find('[data-testid="notify-toggle"]');
-    expect(toggle.exists()).toBe(true);
-    // notify_guidance input hidden until enabled
-    expect(
-      cards[1].find('[data-testid="notify-guidance-input"]').exists()
-    ).toBe(false);
-
-    await toggle.setValue(true);
-    const emitted = wrapper.emitted('update:stage');
-    const last = emitted[emitted.length - 1][0];
-    expect(last).toMatchObject({
-      flow_key: 'sales',
-      stage_key: 'order_drafting',
-      notify_enabled: true,
-    });
-    // Only notify_enabled changed -- no other fields in this payload.
-    expect(Object.keys(last).sort()).toEqual(
-      ['flow_key', 'stage_key', 'notify_enabled'].sort()
+    // discovery: notifiable false -> no pointer
+    expect(cards[0].find('[data-testid="notify-moved-pointer"]').exists()).toBe(
+      false
     );
-  });
+    // order_drafting: notifiable true -> pointer present
+    const pointer = cards[1].find('[data-testid="notify-moved-pointer"]');
+    expect(pointer.exists()).toBe(true);
+    expect(pointer.text()).toBe(
+      'COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.NOTIFY_MOVED_POINTER'
+    );
 
-  it('emits notify_guidance only (not notify_enabled) when the guidance input changes', async () => {
-    const flow = baseFlow();
-    flow.stages[1].notify_enabled = true;
-    const wrapper = mountEditor({ flow });
-
-    const input = wrapper
-      .findAll('[data-testid="stage-card"]')[1]
-      .find('[data-testid="notify-guidance-input"]');
-    expect(input.exists()).toBe(true);
-    await input.setValue('include order total');
-
-    const emitted = wrapper.emitted('update:stage');
-    const last = emitted[emitted.length - 1][0];
-    expect(last).toMatchObject({
-      flow_key: 'sales',
-      stage_key: 'order_drafting',
-      notify_guidance: 'include order total',
-    });
-    expect(Object.keys(last).sort()).toEqual(
-      ['flow_key', 'stage_key', 'notify_guidance'].sort()
+    // The old checkbox/guidance controls are gone entirely.
+    expect(wrapper.find('[data-testid="notify-toggle"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="notify-guidance-input"]').exists()).toBe(
+      false
     );
   });
 

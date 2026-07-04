@@ -28,13 +28,25 @@ function serializeNotifications() {
     muted_events: n.muted_events || [],
   });
 }
+// Pending stage-notify edits from the routing table, keyed by stage_key.
+// These are PUT to /flow-config (not /notifications) alongside the regular
+// notifications save.
+const stageNotifyDraft = ref({});
 const notificationsDirty = computed(
-  () => serializeNotifications() !== notificationsBaseline.value
+  () =>
+    serializeNotifications() !== notificationsBaseline.value ||
+    Object.keys(stageNotifyDraft.value).length > 0
 );
-// Read-only: fetched purely to learn which stages are notifiable (their
-// stage_key + display_name) so the routing table can offer one row per
-// stage-completion event. Never PUT back from here.
+// Fetched to learn which stages are notifiable (their stage_key,
+// display_name, flow_key, notify_enabled, notify_guidance) so the routing
+// table can offer one row per stage-completion event and seed its route from
+// the stage's current notify_enabled/notify_guidance. Only ever PUT back via
+// stageNotifyDraft on save.
 const notifiableStages = ref([]);
+// version_id of the flow-config last loaded — echoed back on the
+// stage-notify PUT as expected_version_id so a concurrent edit from another
+// session 409s instead of silently clobbering.
+const flowVersionId = ref(0);
 // Mirrors the backend's 422: a new (id-less) Telegram channel must carry a
 // non-empty, non-masked bot_token before it can be saved.
 const notificationsInvalid = computed(() =>
@@ -54,17 +66,26 @@ function url(suffix) {
 
 function extractNotifiableStages(flowConfig) {
   return (flowConfig?.flows || [])
-    .flatMap(f => f.stages || [])
+    .flatMap(f => (f.stages || []).map(s => ({ ...s, flow_key: f.flow_key })))
     .filter(s => s.notifiable)
-    .map(s => ({ stage_key: s.stage_key, display_name: s.display_name }));
+    .map(s => ({
+      stage_key: s.stage_key,
+      display_name: s.display_name,
+      flow_key: s.flow_key,
+      notify_enabled: s.notify_enabled,
+      notify_guidance: s.notify_guidance,
+    }));
 }
 
 async function loadNotifiableStages() {
   if (!props.engineUrl) return;
   try {
     const fc = await fetch(url('/flow-config'), { headers: authHeaders() });
-    if (fc.ok)
-      notifiableStages.value = extractNotifiableStages(await fc.json());
+    if (fc.ok) {
+      const flowConfig = await fc.json();
+      notifiableStages.value = extractNotifiableStages(flowConfig);
+      flowVersionId.value = flowConfig?.version_id || 0;
+    }
   } catch (e) {
     useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
   }
@@ -91,6 +112,54 @@ function onNotificationsUpdate(update) {
   notifications.value = { ...notifications.value, ...update };
 }
 
+function onStageNotify(update) {
+  const { stage_key: stageKey, ...fields } = update;
+  const existing = stageNotifyDraft.value[stageKey];
+  const stage = notifiableStages.value.find(s => s.stage_key === stageKey);
+  stageNotifyDraft.value = {
+    ...stageNotifyDraft.value,
+    [stageKey]: {
+      flow_key: existing?.flow_key || stage?.flow_key,
+      stage_key: stageKey,
+      notify_enabled: existing?.notify_enabled ?? stage?.notify_enabled,
+      notify_guidance: existing?.notify_guidance ?? stage?.notify_guidance,
+      ...existing,
+      ...fields,
+    },
+  };
+}
+
+async function saveStageNotifyDraft() {
+  const stages = Object.values(stageNotifyDraft.value).map(s => ({
+    flow_key: s.flow_key,
+    stage_key: s.stage_key,
+    notify_enabled: s.notify_enabled,
+    notify_guidance: s.notify_guidance,
+  }));
+  const res = await fetch(url('/flow-config'), {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      stages,
+      expected_version_id: flowVersionId.value,
+    }),
+  });
+  if (res.status === 409) {
+    // Someone else changed the flow config since we loaded it. Server wins:
+    // reload the latest and drop the local stage-notify edits rather than
+    // clobbering, matching DiscoveryFlowTab's saveDraft conflict handling.
+    useAlert(t('COMVOR_SETTINGS.DISCOVERY.VERSION_CONFLICT_RELOADED'));
+    stageNotifyDraft.value = {};
+    await loadNotifiableStages();
+    return;
+  }
+  if (!res.ok) {
+    const msg = await res.text();
+    throw new Error(msg || `HTTP ${res.status}`);
+  }
+  stageNotifyDraft.value = {};
+}
+
 async function saveNotifications() {
   if (!props.engineUrl || notificationsInvalid.value) return;
   isSavingNotifications.value = true;
@@ -108,6 +177,9 @@ async function saveNotifications() {
       const msg = await res.text();
       throw new Error(msg || `HTTP ${res.status}`);
     }
+    if (Object.keys(stageNotifyDraft.value).length) {
+      await saveStageNotifyDraft();
+    }
     await loadNotifications();
     useAlert(t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SAVE_SUCCESS'));
   } catch (e) {
@@ -124,10 +196,12 @@ defineExpose({
   loadNotifications,
   saveNotifications,
   onNotificationsUpdate,
+  onStageNotify,
   notifications,
   notificationsDirty,
   notificationsInvalid,
   notifiableStages,
+  stageNotifyDraft,
 });
 </script>
 
@@ -143,6 +217,7 @@ defineExpose({
           :notifications="notifications"
           :notifiable-stages="notifiableStages"
           @update:notifications="onNotificationsUpdate"
+          @update:stage-notify="onStageNotify"
         />
         <div class="flex items-center justify-end gap-3 px-1 py-2">
           <span v-if="notificationsDirty" class="text-xs text-amber-600">

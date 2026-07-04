@@ -14,7 +14,6 @@ const emit = defineEmits(['update:stage']);
 const { t } = useI18n();
 
 const GUIDANCE_MAX = 2000;
-const NOTIFY_GUIDANCE_MAX = 500;
 
 // Which stages currently have their "Adjust guidance" expander open —
 // purely local UI state, re-seeded (collapsed) whenever the flow reloads.
@@ -118,14 +117,6 @@ function setActionMode(stage, mode) {
 
 function setGuidance(stage, value) {
   emitStageUpdate(stage.stage_key, { guidance: value });
-}
-
-function setNotifyEnabled(stage, enabled) {
-  emitStageUpdate(stage.stage_key, { notify_enabled: enabled });
-}
-
-function setNotifyGuidance(stage, value) {
-  emitStageUpdate(stage.stage_key, { notify_guidance: value });
 }
 
 function toggleGuidance(stageKey) {
@@ -268,50 +259,13 @@ function toggleGuidance(stageKey) {
           </div>
         </div>
 
-        <div v-if="stage.notifiable" class="flex flex-col gap-1">
-          <label class="flex items-center gap-2">
-            <input
-              type="checkbox"
-              data-testid="notify-toggle"
-              :checked="stage.notify_enabled"
-              class="w-4 h-4 accent-n-brand"
-              @change="setNotifyEnabled(stage, $event.target.checked)"
-            />
-            <span class="text-xs font-medium text-n-slate-12">
-              {{
-                t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.NOTIFY_TOGGLE_LABEL')
-              }}
-              <span
-                :title="
-                  t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.NOTIFY_TOOLTIP')
-                "
-                class="cursor-help text-n-slate-9"
-                >?</span
-              >
-            </span>
-          </label>
-          <div v-if="stage.notify_enabled" class="flex flex-col gap-1 ml-6">
-            <span class="text-xs font-medium text-n-slate-12">{{
-              t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.NOTIFY_GUIDANCE_LABEL')
-            }}</span>
-            <input
-              type="text"
-              data-testid="notify-guidance-input"
-              :value="stage.notify_guidance"
-              :maxlength="NOTIFY_GUIDANCE_MAX"
-              class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-              @change="setNotifyGuidance(stage, $event.target.value)"
-            />
-            <span class="self-end text-[11px] text-n-slate-9">
-              {{
-                t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.CHAR_COUNT', {
-                  count: (stage.notify_guidance || '').length,
-                  max: NOTIFY_GUIDANCE_MAX,
-                })
-              }}
-            </span>
-          </div>
-        </div>
+        <p
+          v-if="stage.notifiable"
+          data-testid="notify-moved-pointer"
+          class="text-xs text-n-slate-9"
+        >
+          {{ t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.NOTIFY_MOVED_POINTER') }}
+        </p>
       </div>
 
       <button

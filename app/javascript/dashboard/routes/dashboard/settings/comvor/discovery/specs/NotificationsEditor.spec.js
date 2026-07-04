@@ -18,8 +18,20 @@ vi.mock('vue-i18n', () => ({
 const MASK = '********';
 
 const notifiableStages = [
-  { stage_key: 'order_drafting', display_name: 'Order taking' },
-  { stage_key: 'payment_fulfillment', display_name: 'Payment' },
+  {
+    stage_key: 'order_drafting',
+    display_name: 'Order taking',
+    flow_key: 'sales',
+    notify_enabled: false,
+    notify_guidance: '',
+  },
+  {
+    stage_key: 'payment_fulfillment',
+    display_name: 'Payment',
+    flow_key: 'sales',
+    notify_enabled: true,
+    notify_guidance: '',
+  },
 ];
 
 function baseNotifications(overrides = {}) {
@@ -51,6 +63,11 @@ function mountEditor(props = {}) {
 
 function lastEmitted(wrapper) {
   const emitted = wrapper.emitted('update:notifications');
+  return emitted[emitted.length - 1][0];
+}
+
+function lastStageNotifyEmitted(wrapper) {
+  const emitted = wrapper.emitted('update:stageNotify');
   return emitted[emitted.length - 1][0];
 }
 
@@ -224,17 +241,55 @@ describe('NotificationsEditor.vue', () => {
     expect(wrapper.text()).toContain('Payment completed');
   });
 
-  it('an event with no subscription and not muted defaults to the Default option', () => {
+  it('renders the two group subheaders and no per-row "Channel" label', () => {
+    const wrapper = mountEditor();
+    expect(wrapper.text()).toContain(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.GROUP_CONVERSATION'
+    );
+    expect(wrapper.text()).toContain(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.GROUP_STAGE'
+    );
+    expect(wrapper.find('[data-testid="route-channel-label"]').exists()).toBe(
+      false
+    );
+  });
+
+  it('a fixed event (handoff/resolved) with no subscription and not muted defaults to the Default option', () => {
     const wrapper = mountEditor();
     const selects = wrapper.findAll(
       'select[data-testid="route-channel-select"]'
     );
-    selects.forEach(select => {
-      expect(select.element.value).toBe('default');
-    });
+    expect(selects[0].element.value).toBe('default');
+    expect(selects[1].element.value).toBe('default');
   });
 
-  it('selecting a specific channel for an event PUTs a subscription with the correct channel_index', async () => {
+  it('a stage row with notify_enabled=false seeds to Off', () => {
+    const wrapper = mountEditor();
+    const selects = wrapper.findAll(
+      'select[data-testid="route-channel-select"]'
+    );
+    // Third row is order_drafting (notify_enabled: false in fixture).
+    expect(selects[2].element.value).toBe('off');
+  });
+
+  it('a stage row with notify_enabled=true and no subscription seeds to Default', () => {
+    const wrapper = mountEditor();
+    const selects = wrapper.findAll(
+      'select[data-testid="route-channel-select"]'
+    );
+    // Fourth row is payment_fulfillment (notify_enabled: true in fixture).
+    expect(selects[3].element.value).toBe('default');
+  });
+
+  it('there is no separate Muted option -- Off replaces it', () => {
+    const wrapper = mountEditor();
+    const select = wrapper.find('select[data-testid="route-channel-select"]');
+    const optionValues = select.findAll('option').map(o => o.element.value);
+    expect(optionValues).toContain('off');
+    expect(optionValues).not.toContain('muted');
+  });
+
+  it('selecting a specific channel for a fixed event PUTs a subscription with the correct channel_index', async () => {
     const wrapper = mountEditor({
       notifications: baseNotifications({
         channels: [
@@ -269,13 +324,13 @@ describe('NotificationsEditor.vue', () => {
     expect(lastEvent.muted_events).toEqual([]);
   });
 
-  it('selecting Muted for an event PUTs it into muted_events with no subscription', async () => {
+  it('selecting Off for a fixed event PUTs it into muted_events with no subscription', async () => {
     const wrapper = mountEditor();
     const selects = wrapper.findAll(
       'select[data-testid="route-channel-select"]'
     );
-    // Second row is `resolved`; mute it.
-    await selects[1].setValue('muted');
+    // Second row is `resolved`; select Off.
+    await selects[1].setValue('off');
 
     const lastEvent = lastEmitted(wrapper);
     expect(lastEvent.muted_events).toEqual(['resolved']);
@@ -290,6 +345,72 @@ describe('NotificationsEditor.vue', () => {
     // Third row is the first notifiable stage (order_drafting).
     await selects[2].setValue('0');
 
+    const lastEvent = lastEmitted(wrapper);
+    expect(lastEvent.subscriptions).toEqual([
+      { event: 'stage:order_drafting', channel_index: 0, template: '' },
+    ]);
+  });
+
+  it('selecting Default on a stage row emits update:stageNotify with notify_enabled true and no subscription/mute', async () => {
+    const wrapper = mountEditor();
+    const selects = wrapper.findAll(
+      'select[data-testid="route-channel-select"]'
+    );
+    // Third row is order_drafting (starts at Off).
+    await selects[2].setValue('default');
+
+    const stageEvent = lastStageNotifyEmitted(wrapper);
+    expect(stageEvent).toMatchObject({
+      stage_key: 'order_drafting',
+      notify_enabled: true,
+    });
+
+    const lastEvent = lastEmitted(wrapper);
+    expect(
+      lastEvent.subscriptions.some(s => s.event === 'stage:order_drafting')
+    ).toBe(false);
+    expect(lastEvent.muted_events).not.toContain('stage:order_drafting');
+  });
+
+  it('selecting Off on a stage row emits update:stageNotify with notify_enabled false', async () => {
+    const wrapper = mountEditor();
+    const selects = wrapper.findAll(
+      'select[data-testid="route-channel-select"]'
+    );
+    // Fourth row is payment_fulfillment (starts at Default).
+    await selects[3].setValue('off');
+
+    const stageEvent = lastStageNotifyEmitted(wrapper);
+    expect(stageEvent).toMatchObject({
+      stage_key: 'payment_fulfillment',
+      notify_enabled: false,
+    });
+  });
+
+  it('selecting a channel on a stage row emits both update:stageNotify (enabled) and a subscription', async () => {
+    const wrapper = mountEditor({
+      notifications: baseNotifications({
+        channels: [
+          {
+            id: 5,
+            kind: 'telegram',
+            config: { bot_token: MASK, chat_id: '123' },
+            enabled: true,
+            is_default: true,
+          },
+        ],
+      }),
+    });
+    const selects = wrapper.findAll(
+      'select[data-testid="route-channel-select"]'
+    );
+    await selects[2].setValue('0');
+
+    const stageEvent = lastStageNotifyEmitted(wrapper);
+    expect(stageEvent).toMatchObject({
+      stage_key: 'order_drafting',
+      notify_enabled: true,
+    });
     const lastEvent = lastEmitted(wrapper);
     expect(lastEvent.subscriptions).toEqual([
       { event: 'stage:order_drafting', channel_index: 0, template: '' },
@@ -336,14 +457,52 @@ describe('NotificationsEditor.vue', () => {
     expect(templateInputs[0].element.value).toBe('hi');
   });
 
-  it('seeds routing rows from muted_events', () => {
+  it('seeds routing rows from muted_events for fixed events', () => {
     const wrapper = mountEditor({
       notifications: baseNotifications({ muted_events: ['resolved'] }),
     });
     const selects = wrapper.findAll(
       'select[data-testid="route-channel-select"]'
     );
-    expect(selects[1].element.value).toBe('muted');
+    expect(selects[1].element.value).toBe('off');
+  });
+
+  // ── In-row guidance input for stage rows ──
+  it('renders a guidance input for a stage row only when its route is not off', () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    // order_drafting (index 2) starts at Off -> no guidance input.
+    expect(rows[2].find('[data-testid="route-guidance-input"]').exists()).toBe(
+      false
+    );
+    // payment_fulfillment (index 3) starts at Default -> guidance input shown.
+    expect(rows[3].find('[data-testid="route-guidance-input"]').exists()).toBe(
+      true
+    );
+  });
+
+  it('does not render a guidance input for fixed-event rows', () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    expect(rows[0].find('[data-testid="route-guidance-input"]').exists()).toBe(
+      false
+    );
+    expect(rows[1].find('[data-testid="route-guidance-input"]').exists()).toBe(
+      false
+    );
+  });
+
+  it('editing the guidance input for a stage row emits update:stageNotify with the new guidance', async () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    const guidanceInput = rows[3].find('[data-testid="route-guidance-input"]');
+    await guidanceInput.setValue('mention the order total');
+
+    const stageEvent = lastStageNotifyEmitted(wrapper);
+    expect(stageEvent).toMatchObject({
+      stage_key: 'payment_fulfillment',
+      notify_guidance: 'mention the order total',
+    });
   });
 
   // ── Empty state ──
