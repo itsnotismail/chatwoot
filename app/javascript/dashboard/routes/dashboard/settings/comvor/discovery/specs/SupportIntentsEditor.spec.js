@@ -161,52 +161,24 @@ describe('SupportIntentsEditor.vue', () => {
     );
   });
 
-  it('shows the notify toggle only when notifiable, and emits notify_enabled only', async () => {
+  it('renders a pointer to the Notifications tab for a notifiable intent, with no notify toggle', async () => {
     const wrapper = mountEditor();
     const rows = wrapper.findAll('[data-testid="intent-row"]');
-    const row = rows[0]; // notifiable: true
-    await row.find('[data-testid="row-expand-toggle"]').trigger('click');
+    const notifiableRow = rows[0]; // refund_request: notifiable true
+    await notifiableRow
+      .find('[data-testid="row-expand-toggle"]')
+      .trigger('click');
 
-    const toggle = row.find('[data-testid="notify-toggle"]');
-    expect(toggle.exists()).toBe(true);
-    expect(row.find('[data-testid="notify-guidance-input"]').exists()).toBe(
+    const pointer = notifiableRow.find('[data-testid="notify-moved-pointer"]');
+    expect(pointer.exists()).toBe(true);
+    expect(pointer.text()).toBe(
+      'COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.NOTIFY_MOVED_POINTER'
+    );
+
+    // The old checkbox/guidance controls are gone entirely.
+    expect(wrapper.find('[data-testid="notify-toggle"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="notify-guidance-input"]').exists()).toBe(
       false
-    );
-
-    await toggle.setValue(true);
-    const emitted = wrapper.emitted('update:stage');
-    const last = emitted[emitted.length - 1][0];
-    expect(last).toMatchObject({
-      flow_key: 'support',
-      stage_key: 'refund_request',
-      notify_enabled: true,
-    });
-    expect(Object.keys(last).sort()).toEqual(
-      ['flow_key', 'stage_key', 'notify_enabled'].sort()
-    );
-  });
-
-  it('emits notify_guidance only when the include-input changes', async () => {
-    const flow = baseFlow();
-    flow.stages[0].notify_enabled = true;
-    const wrapper = mountEditor({ flow });
-    const row = wrapper.findAll('[data-testid="intent-row"]')[0];
-    await row.find('[data-testid="row-expand-toggle"]').trigger('click');
-
-    const input = row.find('[data-testid="notify-guidance-input"]');
-    expect(input.exists()).toBe(true);
-    expect(input.attributes('maxlength')).toBe('500');
-    await input.setValue('include the order number');
-
-    const emitted = wrapper.emitted('update:stage');
-    const last = emitted[emitted.length - 1][0];
-    expect(last).toMatchObject({
-      flow_key: 'support',
-      stage_key: 'refund_request',
-      notify_guidance: 'include the order number',
-    });
-    expect(Object.keys(last).sort()).toEqual(
-      ['flow_key', 'stage_key', 'notify_guidance'].sort()
     );
   });
 
