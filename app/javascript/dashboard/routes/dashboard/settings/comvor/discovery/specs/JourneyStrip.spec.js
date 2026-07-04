@@ -28,19 +28,13 @@ function mountStrip(props = {}) {
 }
 
 describe('JourneyStrip.vue', () => {
-  it('renders one step per stage plus a terminus, with data-testids', () => {
+  it('renders one step per stage, with data-testids', () => {
     const wrapper = mountStrip();
     const steps = wrapper.findAll('[data-testid="journey-step"]');
     expect(steps).toHaveLength(3);
     expect(steps[0].attributes('data-stage-key')).toBe('discovery');
     expect(steps[1].attributes('data-stage-key')).toBe('order_drafting');
     expect(steps[2].attributes('data-stage-key')).toBe('payment_fulfillment');
-    expect(wrapper.find('[data-testid="journey-terminus"]').exists()).toBe(
-      true
-    );
-    expect(wrapper.find('[data-testid="journey-terminus"]').text()).toContain(
-      'COMVOR_SETTINGS.DISCOVERY.JOURNEY.YOUR_TEAM'
-    );
   });
 
   it('colors bot-zone steps (up to and including the cutoff) and greys post-cutoff steps', () => {
@@ -70,9 +64,40 @@ describe('JourneyStrip.vue', () => {
     expect(wrapper.emitted('selectCutoff')[0]).toEqual(['payment_fulfillment']);
   });
 
-  it('clicking the terminus emits select-cutoff with the last stage key', async () => {
+  it('renders exactly one handoff marker, positioned right after the cutoff pill and before the next pill', () => {
     const wrapper = mountStrip();
-    await wrapper.find('[data-testid="journey-terminus"]').trigger('click');
+    const markers = wrapper.findAll('[data-testid="handoff-marker"]');
+    expect(markers).toHaveLength(1);
+
+    const allNodes = wrapper.findAll(
+      '[data-testid="journey-step"], [data-testid="handoff-marker"]'
+    );
+    const cutoffPillIndex = allNodes.findIndex(
+      node => node.attributes('data-stage-key') === 'order_drafting'
+    );
+    const markerIndex = allNodes.findIndex(
+      node => node.attributes('data-testid') === 'handoff-marker'
+    );
+    const nextPillIndex = allNodes.findIndex(
+      node => node.attributes('data-stage-key') === 'payment_fulfillment'
+    );
+
+    expect(markerIndex).toBeGreaterThan(cutoffPillIndex);
+    expect(markerIndex).toBeLessThan(nextPillIndex);
+  });
+
+  it('does not render a separate journey terminus button', () => {
+    const wrapper = mountStrip();
+    expect(wrapper.find('[data-testid="journey-terminus"]').exists()).toBe(
+      false
+    );
+  });
+
+  it('clicking the pill after the cutoff emits select-cutoff with that stage key', async () => {
+    const wrapper = mountStrip();
+    await wrapper
+      .find('[data-stage-key="payment_fulfillment"]')
+      .trigger('click');
     expect(wrapper.emitted('selectCutoff')).toBeTruthy();
     expect(wrapper.emitted('selectCutoff')[0]).toEqual(['payment_fulfillment']);
   });

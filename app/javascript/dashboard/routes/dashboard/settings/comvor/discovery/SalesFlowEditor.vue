@@ -53,6 +53,24 @@ const teamStages = computed(() => {
   return stages.slice(cutoffIndex.value + 1);
 });
 
+const isCutoffLastStage = computed(() => {
+  const stages = props.flow.stages || [];
+  return cutoffIndex.value !== -1 && cutoffIndex.value === stages.length - 1;
+});
+
+const handoffSummary = computed(() => {
+  if (isCutoffLastStage.value) {
+    return t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.HANDOFF_SUMMARY_ALL');
+  }
+  const cutoffStage = botStages.value[botStages.value.length - 1];
+  const stageName = cutoffStage
+    ? cutoffStage.display_name || cutoffStage.stage_key
+    : '';
+  return t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.HANDOFF_SUMMARY_THROUGH', {
+    stage: stageName,
+  });
+});
+
 function wallFor(stageKey) {
   return props.walls.find(
     w => w.flow_key === props.flow.flow_key && w.stage_key === stageKey
@@ -116,11 +134,17 @@ function toggleGuidance(stageKey) {
 
 <template>
   <div class="flex flex-col gap-4">
+    <p class="text-xs text-n-slate-10">
+      {{ t('COMVOR_SETTINGS.DISCOVERY.JOURNEY.CAPTION') }}
+    </p>
     <JourneyStrip
       :stages="flow.stages"
       :cutoff-key="cutoffKey"
       @select-cutoff="moveCutoffTo"
     />
+    <p data-testid="handoff-summary" class="text-xs text-n-slate-10">
+      {{ handoffSummary }}
+    </p>
 
     <div class="flex flex-col gap-3">
       <div

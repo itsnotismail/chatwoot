@@ -94,7 +94,9 @@
       },
       "JOURNEY": {
         "YOUR_TEAM": "🧑 Your team",
-        "ARROW": "→"
+        "ARROW": "→",
+        "CAPTION": "Your bot handles the blue steps. Tap a step to choose where your team takes over.",
+        "TEAM_TAKES_OVER": "Your team takes over"
       },
       "SALES_EDITOR": {
         "FINISH_LABEL": "When this step completes",
@@ -111,7 +113,9 @@
         "NOTIFY_TOOLTIP": "Send a message to your team's notification channel when this step is completed.",
         "NOTIFY_GUIDANCE_LABEL": "What should the notification include?",
         "HANDLED_BY_TEAM": "Handled by your team",
-        "CHAR_COUNT": "{count}/{max}"
+        "CHAR_COUNT": "{count}/{max}",
+        "HANDOFF_SUMMARY_THROUGH": "Your bot runs through “{stage}”, then your team takes over.",
+        "HANDOFF_SUMMARY_ALL": "Your bot runs the whole flow, then your team takes over."
       },
       "POLICY": {
         "TITLE": "Policy",
