@@ -361,66 +361,93 @@ const stageRows = computed(() => allRows.value.filter(r => r.isStage));
       <div
         v-for="(channel, index) in channels"
         :key="index"
-        class="flex flex-wrap items-end gap-2 border rounded-md p-3"
+        class="flex flex-col gap-3 border rounded-md p-3"
       >
-        <label class="flex items-center gap-2">
-          <input
-            data-testid="channel-default-radio"
-            type="radio"
-            name="default-channel"
-            :checked="channel.isDefault"
-            class="w-4 h-4 accent-n-brand"
-            @change="setDefaultChannel(index)"
-          />
-          <span class="text-xs font-medium text-n-slate-12">
-            {{ t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.DEFAULT_LABEL') }}
-            <InfoHint
-              :text="
-                t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.DEFAULT_TOOLTIP')
-              "
-            />
-          </span>
-        </label>
-
-        <label class="flex flex-col gap-1">
-          <span class="text-xs font-medium text-n-slate-12">{{
-            t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.BOT_TOKEN_LABEL')
-          }}</span>
-          <input
-            data-testid="channel-bot-token-input"
-            type="text"
-            :value="channel.bot_token"
-            :placeholder="
-              channel.id && !channel.tokenTyped
-                ? t(
-                    'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.BOT_TOKEN_SAVED_PLACEHOLDER'
-                  )
-                : null
+        <div class="flex items-center justify-between gap-2">
+          <label
+            class="flex items-center gap-1.5 rounded-full px-2.5 py-1"
+            :class="
+              channel.isDefault
+                ? 'bg-n-brand/10 text-n-brand'
+                : 'text-n-slate-11'
             "
-            class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-            @change="onChannelField(index, 'bot_token', $event.target.value)"
-          />
-        </label>
-
-        <label class="flex flex-col gap-1">
-          <span class="text-xs font-medium text-n-slate-12">
-            {{ t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHAT_ID_LABEL') }}
-            <InfoHint
-              :text="
-                t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHAT_ID_TOOLTIP')
-              "
+          >
+            <input
+              data-testid="channel-default-radio"
+              type="radio"
+              name="default-channel"
+              :checked="channel.isDefault"
+              class="w-4 h-4 accent-n-brand"
+              @change="setDefaultChannel(index)"
             />
-          </span>
-          <input
-            data-testid="channel-chat-id-input"
-            type="text"
-            :value="channel.chat_id"
-            class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-            @change="onChannelField(index, 'chat_id', $event.target.value)"
-          />
-        </label>
+            <span class="text-xs font-medium">
+              <template v-if="channel.isDefault">
+                {{ t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.DEFAULT_LABEL') }}
+                <InfoHint
+                  :text="
+                    t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.DEFAULT_TOOLTIP')
+                  "
+                />
+              </template>
+              <template v-else>
+                {{
+                  t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SET_DEFAULT_LABEL')
+                }}
+              </template>
+            </span>
+          </label>
 
-        <label class="flex items-center gap-2">
+          <button
+            data-testid="remove-channel-button"
+            type="button"
+            class="text-xs text-n-ruby-9 hover:text-n-ruby-10"
+            @click="removeChannel(index)"
+          >
+            {{ t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.REMOVE_CHANNEL') }}
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label class="flex flex-col gap-1">
+            <span class="text-xs font-medium text-n-slate-12">{{
+              t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.BOT_TOKEN_LABEL')
+            }}</span>
+            <input
+              data-testid="channel-bot-token-input"
+              type="text"
+              :value="channel.bot_token"
+              :placeholder="
+                channel.id && !channel.tokenTyped
+                  ? t(
+                      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.BOT_TOKEN_SAVED_PLACEHOLDER'
+                    )
+                  : null
+              "
+              class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+              @change="onChannelField(index, 'bot_token', $event.target.value)"
+            />
+          </label>
+
+          <label class="flex flex-col gap-1">
+            <span class="text-xs font-medium text-n-slate-12">
+              {{ t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHAT_ID_LABEL') }}
+              <InfoHint
+                :text="
+                  t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHAT_ID_TOOLTIP')
+                "
+              />
+            </span>
+            <input
+              data-testid="channel-chat-id-input"
+              type="text"
+              :value="channel.chat_id"
+              class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+              @change="onChannelField(index, 'chat_id', $event.target.value)"
+            />
+          </label>
+        </div>
+
+        <div class="flex items-center gap-2 border-t pt-3">
           <input
             data-testid="channel-enabled-checkbox"
             type="checkbox"
@@ -431,16 +458,10 @@ const stageRows = computed(() => allRows.value.filter(r => r.isStage));
           <span class="text-xs font-medium text-n-slate-12">{{
             t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ENABLED_LABEL')
           }}</span>
-        </label>
-
-        <button
-          data-testid="remove-channel-button"
-          type="button"
-          class="text-xs text-red-600"
-          @click="removeChannel(index)"
-        >
-          {{ t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.REMOVE_CHANNEL') }}
-        </button>
+          <span class="text-xs text-n-slate-10">{{
+            t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ENABLED_HINT')
+          }}</span>
+        </div>
       </div>
 
       <button

@@ -206,6 +206,62 @@ describe('NotificationsEditor.vue', () => {
     expect(lastEvent.channels[1].is_default).toBe(true);
   });
 
+  it('shows the Set as default affordance for a non-default channel and the Default pill for the default one', () => {
+    const wrapper = mountEditor({
+      notifications: baseNotifications({
+        channels: [
+          {
+            id: 5,
+            kind: 'telegram',
+            config: { bot_token: MASK, chat_id: '123' },
+            enabled: true,
+            is_default: true,
+          },
+          {
+            id: 6,
+            kind: 'telegram',
+            config: { bot_token: MASK, chat_id: '456' },
+            enabled: true,
+            is_default: false,
+          },
+        ],
+      }),
+    });
+
+    expect(wrapper.text()).toContain(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.DEFAULT_LABEL'
+    );
+    expect(wrapper.text()).toContain(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SET_DEFAULT_LABEL'
+    );
+  });
+
+  it('shows the enabled hint text next to the enabled checkbox', () => {
+    const wrapper = mountEditor();
+    expect(wrapper.text()).toContain(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ENABLED_HINT'
+    );
+  });
+
+  it('preserves all five channel-card testids per channel', () => {
+    const wrapper = mountEditor();
+    expect(wrapper.find('[data-testid="channel-default-radio"]').exists()).toBe(
+      true
+    );
+    expect(
+      wrapper.find('[data-testid="channel-bot-token-input"]').exists()
+    ).toBe(true);
+    expect(wrapper.find('[data-testid="channel-chat-id-input"]').exists()).toBe(
+      true
+    );
+    expect(
+      wrapper.find('[data-testid="channel-enabled-checkbox"]').exists()
+    ).toBe(true);
+    expect(wrapper.find('[data-testid="remove-channel-button"]').exists()).toBe(
+      true
+    );
+  });
+
   it('shows a hint when no channel is marked default', () => {
     const wrapper = mountEditor({
       notifications: baseNotifications({
