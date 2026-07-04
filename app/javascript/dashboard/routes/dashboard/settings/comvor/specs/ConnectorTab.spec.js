@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { useRoute } from 'vue-router';
+import { useAlert } from 'dashboard/composables';
 import Index from '../Index.vue';
 
 // Minimal i18n + store + alert + router mocks, matching the pattern used in
@@ -85,6 +86,36 @@ function mockFetch({ connectorType = 'none' } = {}) {
   });
 }
 
+// Mocks the initial /connectors GET (fired from fetchSettings -> loadConnectors
+// on mount) to fail every time, so `connectors.value` stays null throughout —
+// reproducing the state where the connector tab loaded but its /connectors
+// fetch silently failed (loadConnectors catches + alerts, doesn't rethrow).
+function mockFetchConnectorsGetAlwaysFails({ connectorType = 'none' } = {}) {
+  global.fetch = vi.fn((url, opts) => {
+    const isGet = !opts?.method;
+    if (url.endsWith('/api/verticals')) return jsonResponse(VERTICALS);
+    if (url.endsWith('/knowledge-cards')) return jsonResponse([]);
+    if (url.endsWith('/flow-config')) return jsonResponse({ policy: {} });
+    if (url.endsWith('/connectors/ewity') && isGet) {
+      return jsonResponse({ token_hint: '', permissions: [] });
+    }
+    if (url.endsWith('/connectors') && isGet) {
+      return Promise.reject(new Error('network down'));
+    }
+    // account GET
+    if (isGet && /\/api\/accounts\/\d+$/.test(url)) {
+      return jsonResponse({
+        business_category: 'retail',
+        connector_type: connectorType,
+      });
+    }
+    // PUTs (account save, ewity creds save) and any other GET refresh calls
+    // issued during saveConnector. The /connectors PUT is intentionally NOT
+    // special-cased here — if it's ever issued, its body is inspected below.
+    return jsonResponse({ token_hint: '', permissions: [] });
+  });
+}
+
 function mountIndex() {
   return mount(Index, { global: { stubs } });
 }
@@ -154,5 +185,43 @@ describe('Index.vue — Connector tab (unified panel)', () => {
     expect(connectorsPut).toBeTruthy();
     const body = JSON.parse(connectorsPut[1].body);
     expect(body.enabled).not.toContain('ewity');
+  });
+
+  it('never PUTs disabled_capabilities: [] to /connectors when the initial connectors GET failed (connectors.value stayed null)', async () => {
+    mockFetchConnectorsGetAlwaysFails({ connectorType: 'none' });
+    const wrapper = mountIndex();
+    await flushPromises();
+    wrapper.vm.selectedTab = 4;
+    await flushPromises();
+
+    // Sanity check: the load failure really did leave connectors.value null,
+    // reproducing the bug precondition (loadConnectors catches + alerts but
+    // doesn't rethrow, and isLoading still clears so the tab is usable).
+    expect(wrapper.vm.connectors).toBeNull();
+
+    await wrapper
+      .find('select[data-testid="connector-type-select"]')
+      .setValue('ewity');
+    await wrapper.find('input[type="password"]').setValue('uat_sometoken');
+
+    await wrapper.vm.saveConnector();
+    await flushPromises();
+
+    const wipingPut = global.fetch.mock.calls.find(([url, opts]) => {
+      if (!(url.endsWith('/connectors') && opts?.method === 'PUT')) {
+        return false;
+      }
+      const body = JSON.parse(opts.body);
+      return (
+        Array.isArray(body.disabled_capabilities) &&
+        body.disabled_capabilities.length === 0
+      );
+    });
+    expect(wipingPut).toBeUndefined();
+
+    // The failure must be surfaced, not silently swallowed as a success.
+    expect(useAlert).toHaveBeenCalledWith(
+      'COMVOR_SETTINGS.CONNECTOR.EWITY.SAVE_ERROR'
+    );
   });
 });

@@ -223,6 +223,17 @@ const hasToggleableCapabilities = computed(
 // found and checked the box below.
 async function syncConnectorEnabled() {
   if (!engineURL()) return;
+  // connectors.value may still be null here if the initial /connectors GET
+  // (loadConnectors, fired from fetchSettings on mount) failed — that loader
+  // catches its own errors and never rethrows, so the tab stays usable with
+  // connectors.value left at null. Falling back to [] for disabled_capabilities
+  // in that case would PUT an authoritative delete-all of the account's
+  // soft-wall config to the backend. Retry the load once; if it's still
+  // unavailable, abort instead of sending a wiping PUT.
+  if (!connectors.value) await loadConnectors();
+  if (!connectors.value) {
+    throw new Error(t('COMVOR_SETTINGS.CONNECTOR.EWITY.SAVE_ERROR'));
+  }
   const enabled = new Set(connectors.value?.enabled || []);
   if (connectorType.value === 'ewity') enabled.add('ewity');
   else enabled.delete('ewity');

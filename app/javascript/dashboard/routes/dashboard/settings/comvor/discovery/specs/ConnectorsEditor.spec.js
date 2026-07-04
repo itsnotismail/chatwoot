@@ -7,7 +7,6 @@ vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: k => k }) }));
 const connectors = {
   enabled: ['ewity'],
   providers: {},
-  available: ['ewity', 'shopify'],
 };
 
 function mountEditor(props = {}) {
