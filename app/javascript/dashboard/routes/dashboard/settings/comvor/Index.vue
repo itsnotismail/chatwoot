@@ -66,7 +66,31 @@ const tokenGuideOpen = ref(false);
 // passed as [] to ConnectorsEditor.
 const connectors = ref(null);
 const isSavingConnectors = ref(false);
-const connectorsDirty = ref(false);
+// Baseline snapshot of editable connector-tab state, captured on load and
+// after each successful save. connectorsDirty is a computed diff against
+// this baseline (not a one-way latch), so reverting an edit by hand — e.g.
+// picking a connector type then picking it back — clears the "unsaved
+// changes" message instead of leaving it stuck.
+const connectorBaseline = ref('');
+function serializeConnectorState() {
+  return JSON.stringify({
+    connector_type: connectorType.value,
+    // The GET for a saved connector only ever returns a masked token hint —
+    // ewityToken itself starts (and is reset after save) at '', so any
+    // non-empty value here is always a user-typed replacement, never the
+    // masked/unchanged token. Safe to include unconditionally.
+    ewity_token: ewityToken.value,
+    ewity_optional_permissions: [...ewityOptionalPermissions.value].sort(),
+    enabled: [...(connectors.value?.enabled || [])].sort(),
+    providers: connectors.value?.providers || {},
+    disabled_capabilities: [
+      ...(connectors.value?.disabled_capabilities || []),
+    ].sort(),
+  });
+}
+const connectorsDirty = computed(
+  () => serializeConnectorState() !== connectorBaseline.value
+);
 
 // Follow-up time (Instructions tab): minutes in the UI, seconds
 // (`follow_up_after`) on the wire. The other policy fields are no longer
@@ -203,7 +227,6 @@ async function loadConnectors() {
 
 function onConnectorsUpdate(update) {
   connectors.value = { ...connectors.value, ...update };
-  connectorsDirty.value = true;
 }
 
 // Gates the collapsed "Advanced" section: only worth showing when there's a
@@ -273,7 +296,7 @@ async function saveConnectors() {
       throw new Error(msg || `HTTP ${res.status}`);
     }
     await loadConnectors();
-    connectorsDirty.value = false;
+    connectorBaseline.value = serializeConnectorState();
     useAlert(t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE_SUCCESS'));
   } catch (e) {
     useAlert(e.message || t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE_ERROR'));
@@ -419,6 +442,7 @@ async function fetchSettings() {
       }
     }
     await Promise.all([loadConnectors(), loadFollowUp()]);
+    connectorBaseline.value = serializeConnectorState();
   } catch (e) {
     useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
   } finally {
@@ -546,6 +570,7 @@ async function saveConnector() {
     }
     await syncConnectorEnabled();
     await loadConnectors();
+    connectorBaseline.value = serializeConnectorState();
     useAlert(t('COMVOR_SETTINGS.CONNECTOR.EWITY.SAVE_SUCCESS'));
   } catch (e) {
     useAlert(e.message || t('COMVOR_SETTINGS.CONNECTOR.EWITY.SAVE_ERROR'));

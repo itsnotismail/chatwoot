@@ -224,4 +224,90 @@ describe('Index.vue — Connector tab (unified panel)', () => {
       'COMVOR_SETTINGS.CONNECTOR.EWITY.SAVE_ERROR'
     );
   });
+
+  describe('unsaved-changes indicator (baseline diff, not a one-way latch)', () => {
+    it('is false right after load, true after an edit, and false again after reverting the edit by hand', async () => {
+      mockFetch({ connectorType: 'none' });
+      const wrapper = mountIndex();
+      await flushPromises();
+      wrapper.vm.selectedTab = 4;
+      await flushPromises();
+
+      expect(wrapper.vm.connectorsDirty).toBe(false);
+
+      wrapper.vm.connectorType = 'ewity';
+      await flushPromises();
+      expect(wrapper.vm.connectorsDirty).toBe(true);
+
+      wrapper.vm.connectorType = 'none';
+      await flushPromises();
+      expect(wrapper.vm.connectorsDirty).toBe(false);
+    });
+
+    it('stays false when a saved (masked) token hint is present but the user has not typed a replacement', async () => {
+      mockFetch({ connectorType: 'ewity' });
+      const wrapper = mountIndex();
+      await flushPromises();
+      wrapper.vm.selectedTab = 4;
+      await flushPromises();
+
+      expect(wrapper.vm.connectorsDirty).toBe(false);
+    });
+
+    it('goes true when the user types a new token and false again after clearing it back to empty', async () => {
+      mockFetch({ connectorType: 'ewity' });
+      const wrapper = mountIndex();
+      await flushPromises();
+      wrapper.vm.selectedTab = 4;
+      await flushPromises();
+
+      expect(wrapper.vm.connectorsDirty).toBe(false);
+
+      wrapper.vm.ewityToken = 'uat_newtoken';
+      await flushPromises();
+      expect(wrapper.vm.connectorsDirty).toBe(true);
+
+      wrapper.vm.ewityToken = '';
+      await flushPromises();
+      expect(wrapper.vm.connectorsDirty).toBe(false);
+    });
+
+    it('goes true after onConnectorsUpdate changes the enabled list, and false again after reverting it', async () => {
+      mockFetch({ connectorType: 'none' });
+      const wrapper = mountIndex();
+      await flushPromises();
+      wrapper.vm.selectedTab = 4;
+      await flushPromises();
+
+      expect(wrapper.vm.connectorsDirty).toBe(false);
+      const originalEnabled = [...(wrapper.vm.connectors.enabled || [])];
+
+      wrapper.vm.onConnectorsUpdate({ enabled: [...originalEnabled, 'ewity'] });
+      await flushPromises();
+      expect(wrapper.vm.connectorsDirty).toBe(true);
+
+      wrapper.vm.onConnectorsUpdate({ enabled: originalEnabled });
+      await flushPromises();
+      expect(wrapper.vm.connectorsDirty).toBe(false);
+    });
+
+    it('is false again after saveConnector succeeds (new baseline captured on save)', async () => {
+      mockFetch({ connectorType: 'none' });
+      const wrapper = mountIndex();
+      await flushPromises();
+      wrapper.vm.selectedTab = 4;
+      await flushPromises();
+
+      await wrapper
+        .find('select[data-testid="connector-type-select"]')
+        .setValue('ewity');
+      await wrapper.find('input[type="password"]').setValue('uat_sometoken');
+      expect(wrapper.vm.connectorsDirty).toBe(true);
+
+      await wrapper.vm.saveConnector();
+      await flushPromises();
+
+      expect(wrapper.vm.connectorsDirty).toBe(false);
+    });
+  });
 });
