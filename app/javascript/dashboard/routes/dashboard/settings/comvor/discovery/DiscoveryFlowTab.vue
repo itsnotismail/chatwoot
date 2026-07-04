@@ -6,6 +6,7 @@ import { useAlert } from 'dashboard/composables';
 import SalesFlowEditor from './SalesFlowEditor.vue';
 import SupportIntentsEditor from './SupportIntentsEditor.vue';
 import PublishConfirmModal from './PublishConfirmModal.vue';
+import DiscardConfirmModal from './DiscardConfirmModal.vue';
 import { flowSummary } from './summary.js';
 
 const props = defineProps({
@@ -19,6 +20,7 @@ const store = useStore();
 const isLoading = ref(false);
 const isSaving = ref(false);
 const isPublishing = ref(false);
+const isDiscarding = ref(false);
 const flowConfig = ref(null);
 // Which sub-tab is showing: the ordered (sales) flow or the unordered
 // (support) flow. Defaults to sales.
@@ -74,6 +76,7 @@ const hasUnsavedChanges = computed(
 const hardErrors = ref([]);
 const softWarnings = ref([]);
 const showPublishModal = ref(false);
+const showDiscardModal = ref(false);
 
 const STATUS_PILL_MAP = {
   defaults: {
@@ -265,6 +268,42 @@ async function confirmPublish() {
   await publish();
 }
 
+function openDiscardModal() {
+  showDiscardModal.value = true;
+}
+
+function cancelDiscardModal() {
+  showDiscardModal.value = false;
+}
+
+async function discardDraft() {
+  if (!props.engineUrl) return;
+  isDiscarding.value = true;
+  try {
+    const res = await fetch(url('/flow-config/draft'), {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || `HTTP ${res.status}`);
+    }
+    applyFlowConfig(await res.json());
+    hardErrors.value = [];
+    softWarnings.value = [];
+    useAlert(t('COMVOR_SETTINGS.DISCOVERY.DISCARD_SUCCESS'));
+  } catch (e) {
+    useAlert(e.message || t('COMVOR_SETTINGS.DISCOVERY.DISCARD_ERROR'));
+  } finally {
+    isDiscarding.value = false;
+    showDiscardModal.value = false;
+  }
+}
+
+async function confirmDiscard() {
+  await discardDraft();
+}
+
 onMounted(loadAll);
 defineExpose({
   loadAll,
@@ -275,6 +314,12 @@ defineExpose({
   confirmPublish,
   cancelPublishModal,
   showPublishModal,
+  discardDraft,
+  openDiscardModal,
+  confirmDiscard,
+  cancelDiscardModal,
+  showDiscardModal,
+  isDiscarding,
   flowConfig,
   hardErrors,
   softWarnings,
@@ -398,6 +443,20 @@ defineExpose({
           {{ t('COMVOR_SETTINGS.DISCOVERY.UNSAVED_CHANGES') }}
         </span>
         <button
+          v-if="flowConfig.status === 'draft'"
+          type="button"
+          data-testid="discard-draft-button"
+          :disabled="isDiscarding"
+          class="rounded-lg border border-n-weak px-4 py-2 text-sm font-medium text-n-slate-11 hover:bg-n-alpha-1 disabled:opacity-50"
+          @click="openDiscardModal"
+        >
+          {{
+            isDiscarding
+              ? t('COMVOR_SETTINGS.DISCOVERY.DISCARDING')
+              : t('COMVOR_SETTINGS.DISCOVERY.DISCARD_DRAFT')
+          }}
+        </button>
+        <button
           type="button"
           data-testid="publish-button"
           :disabled="hasUnsavedChanges || isPublishing"
@@ -438,6 +497,13 @@ defineExpose({
         :stage-display-name="stageDisplayName"
         @confirm="confirmPublish"
         @cancel="cancelPublishModal"
+      />
+
+      <DiscardConfirmModal
+        v-if="showDiscardModal"
+        :is-discarding="isDiscarding"
+        @confirm="confirmDiscard"
+        @cancel="cancelDiscardModal"
       />
     </template>
   </div>

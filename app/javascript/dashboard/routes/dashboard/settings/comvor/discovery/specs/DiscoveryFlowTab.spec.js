@@ -98,7 +98,12 @@ const flowConfig = {
   soft_warnings: [],
 };
 
-function mockFetch({ publishResponse, putResponse } = {}) {
+function mockFetch({
+  publishResponse,
+  putResponse,
+  discardResponse,
+  discardStatus = 'published',
+} = {}) {
   let currentStatus = 'defaults';
   global.fetch = vi.fn((url, opts) => {
     if (putResponse && url.endsWith('/flow-config') && opts?.method === 'PUT') {
@@ -113,6 +118,20 @@ function mockFetch({ publishResponse, putResponse } = {}) {
         // Deep-clone so mutating a returned stage (as onStageUpdate now does
         // to reflect edits before save) never leaks into the shared fixture
         // or across other tests/fetches in this file.
+        json: () =>
+          Promise.resolve({
+            ...structuredClone(flowConfig),
+            status: currentStatus,
+          }),
+        text: () => Promise.resolve(''),
+      });
+    }
+    if (url.endsWith('/flow-config/draft') && opts?.method === 'DELETE') {
+      if (discardResponse) return Promise.resolve(discardResponse);
+      currentStatus = discardStatus;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
         json: () =>
           Promise.resolve({
             ...structuredClone(flowConfig),
@@ -633,6 +652,148 @@ describe('DiscoveryFlowTab.vue', () => {
       s => s.stage_key === 'discovery'
     );
     expect(updatedStage.on_complete).toBe('handoff');
+  });
+
+  it('the discard-draft button only renders when status is draft', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    // Loaded fixture status is 'defaults' — button hidden.
+    expect(wrapper.find('[data-testid="discard-draft-button"]').exists()).toBe(
+      false
+    );
+
+    wrapper.vm.flowConfig.status = 'published';
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="discard-draft-button"]').exists()).toBe(
+      false
+    );
+
+    wrapper.vm.flowConfig.status = 'draft';
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="discard-draft-button"]').exists()).toBe(
+      true
+    );
+  });
+
+  it('clicking Discard draft opens the confirmation modal instead of deleting immediately', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+    wrapper.vm.flowConfig.status = 'draft';
+    await wrapper.vm.$nextTick();
+    global.fetch.mockClear();
+
+    await wrapper.find('[data-testid="discard-draft-button"]').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="discard-confirm-modal"]').exists()).toBe(
+      true
+    );
+    expect(
+      global.fetch.mock.calls.some(call =>
+        call[0].endsWith('/flow-config/draft')
+      )
+    ).toBe(false);
+  });
+
+  it('cancelling the discard modal does not DELETE the draft', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+    wrapper.vm.flowConfig.status = 'draft';
+    await wrapper.vm.$nextTick();
+
+    await wrapper.find('[data-testid="discard-draft-button"]').trigger('click');
+    await wrapper.vm.$nextTick();
+    global.fetch.mockClear();
+
+    await wrapper.find('[data-testid="discard-modal-cancel"]').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="discard-confirm-modal"]').exists()).toBe(
+      false
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('confirming the discard modal DELETEs the draft and applies the returned config', async () => {
+    mockFetch({ discardStatus: 'published' });
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+    wrapper.vm.flowConfig.status = 'draft';
+    await wrapper.vm.$nextTick();
+
+    await wrapper.find('[data-testid="discard-draft-button"]').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    await wrapper
+      .find('[data-testid="discard-modal-confirm"]')
+      .trigger('click');
+    await flushPromises();
+
+    const deleteCall = global.fetch.mock.calls.find(
+      call => call[1]?.method === 'DELETE'
+    );
+    expect(deleteCall).toBeTruthy();
+    expect(deleteCall[0]).toBe(
+      'http://engine/api/accounts/7/flow-config/draft'
+    );
+
+    expect(wrapper.vm.flowConfig.status).not.toBe('draft');
+    expect(wrapper.vm.flowConfig.status).toBe('published');
+    expect(wrapper.vm.hasUnsavedChanges).toBe(false);
+    expect(wrapper.find('[data-testid="discard-confirm-modal"]').exists()).toBe(
+      false
+    );
+    expect(wrapper.find('[data-testid="discard-draft-button"]').exists()).toBe(
+      false
+    );
+
+    const { useAlert } = await import('dashboard/composables');
+    expect(useAlert).toHaveBeenCalledWith(
+      'COMVOR_SETTINGS.DISCOVERY.DISCARD_SUCCESS'
+    );
+  });
+
+  it('discard error surfaces an alert and keeps the draft state', async () => {
+    mockFetch({
+      discardResponse: {
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({}),
+        text: () => Promise.resolve('boom'),
+      },
+    });
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+    wrapper.vm.flowConfig.status = 'draft';
+    await wrapper.vm.$nextTick();
+
+    await wrapper.find('[data-testid="discard-draft-button"]').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    await wrapper
+      .find('[data-testid="discard-modal-confirm"]')
+      .trigger('click');
+    await flushPromises();
+
+    const { useAlert } = await import('dashboard/composables');
+    expect(useAlert).toHaveBeenCalledWith('boom');
+    expect(wrapper.vm.flowConfig.status).toBe('draft');
   });
 
   it('hasUnsavedChanges is a computed comparison against the loaded baseline: false on load, true after an edit, and false again once the edit is reverted by hand', async () => {

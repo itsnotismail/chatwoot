@@ -74,6 +74,10 @@
       "PUBLISH_SOFT_WARNINGS_TITLE": "Warnings",
       "SAVE_HARD_ERRORS_TITLE": "Draft saved, but it can't be published yet:",
       "VERSION_CONFLICT_RELOADED": "This configuration was changed elsewhere — reloaded the latest version. Please re-apply your edits.",
+      "DISCARD_DRAFT": "Discard draft",
+      "DISCARDING": "Discarding...",
+      "DISCARD_SUCCESS": "Draft discarded.",
+      "DISCARD_ERROR": "Failed to discard draft. Please try again.",
       "SUB_TABS": {
         "SALES": "Sales flow",
         "SUPPORT": "Support intents"
@@ -83,6 +87,12 @@
         "CONSEQUENCES_TITLE": "Before you publish",
         "SOFT_WARNING": "{stage} is currently unavailable — customers will be handed to your team at this step.",
         "CONFIRM": "Confirm & publish",
+        "CANCEL": "Cancel"
+      },
+      "DISCARD_MODAL": {
+        "TITLE": "Discard draft?",
+        "BODY": "This throws away your unsaved draft and reverts to your published settings (or the defaults if nothing is published yet). This can't be undone.",
+        "CONFIRM": "Discard draft",
         "CANCEL": "Cancel"
       },
       "SUMMARY": {
