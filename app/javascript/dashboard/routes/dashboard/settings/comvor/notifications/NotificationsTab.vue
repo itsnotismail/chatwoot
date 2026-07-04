@@ -129,6 +129,9 @@ function onStageNotify(update) {
   };
 }
 
+// Returns 'ok' on success, 'conflict' on a handled 409 (after its own
+// alert+reload+clear). Throws on any other failure so the caller can tell
+// a stage-save failure apart from a /notifications failure.
 async function saveStageNotifyDraft() {
   const stages = Object.values(stageNotifyDraft.value).map(s => ({
     flow_key: s.flow_key,
@@ -151,13 +154,14 @@ async function saveStageNotifyDraft() {
     useAlert(t('COMVOR_SETTINGS.DISCOVERY.VERSION_CONFLICT_RELOADED'));
     stageNotifyDraft.value = {};
     await loadNotifiableStages();
-    return;
+    return 'conflict';
   }
   if (!res.ok) {
     const msg = await res.text();
     throw new Error(msg || `HTTP ${res.status}`);
   }
   stageNotifyDraft.value = {};
+  return 'ok';
 }
 
 async function saveNotifications() {
@@ -178,7 +182,21 @@ async function saveNotifications() {
       throw new Error(msg || `HTTP ${res.status}`);
     }
     if (Object.keys(stageNotifyDraft.value).length) {
-      await saveStageNotifyDraft();
+      let stageResult;
+      try {
+        stageResult = await saveStageNotifyDraft();
+      } catch (stageError) {
+        // /notifications already succeeded — don't blame it for the stage
+        // save failing. Keep the stage draft so a re-save retries just that
+        // part.
+        useAlert(t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.STAGE_SAVE_ERROR'));
+        return;
+      }
+      if (stageResult === 'conflict') {
+        // The 409 handler already alerted and reloaded; don't additionally
+        // (and falsely) report success.
+        return;
+      }
     }
     await loadNotifications();
     useAlert(t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SAVE_SUCCESS'));

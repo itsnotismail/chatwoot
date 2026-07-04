@@ -179,6 +179,7 @@
         "SAVING": "Saving...",
         "SAVE_SUCCESS": "Notifications saved.",
         "SAVE_ERROR": "Failed to save notifications. Please try again.",
+        "STAGE_SAVE_ERROR": "Alert routing saved, but stage on/off settings couldn't be saved. Try again.",
         "CHANNELS_TITLE": "Telegram channels",
         "DEFAULT_LABEL": "Default",
         "DEFAULT_TOOLTIP": "The default channel receives events that aren't routed to a specific channel below.",

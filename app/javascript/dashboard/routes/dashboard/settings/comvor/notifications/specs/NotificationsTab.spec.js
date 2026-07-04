@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import NotificationsTab from '../NotificationsTab.vue';
+import { useAlert } from 'dashboard/composables';
 
 // Minimal i18n + store + alert mocks (components use these composables).
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: k => k }) }));
@@ -433,10 +434,69 @@ describe('NotificationsTab.vue', () => {
     });
     await wrapper.vm.$nextTick();
 
+    useAlert.mockClear();
     await wrapper.vm.saveNotifications();
     await flushPromises();
 
     // Local stage-notify edits are dropped after the reload triggered by 409.
     expect(wrapper.vm.notificationsDirty).toBe(false);
+
+    // The 409 handler already alerted about the conflict; saveNotifications
+    // must not additionally (and falsely) report success.
+    expect(useAlert).toHaveBeenCalledWith(
+      'COMVOR_SETTINGS.DISCOVERY.VERSION_CONFLICT_RELOADED'
+    );
+    expect(useAlert).not.toHaveBeenCalledWith(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SAVE_SUCCESS'
+    );
+  });
+
+  it('a non-409 flow-config failure retains the stage draft and reports a stage-specific error, not a notifications-save error', async () => {
+    mockFetch({
+      flowConfigPutResponse: {
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({}),
+        text: () => Promise.resolve('server error'),
+      },
+    });
+
+    const wrapper = mount(NotificationsTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    wrapper.vm.onStageNotify({
+      stage_key: 'order_drafting',
+      notify_enabled: false,
+    });
+    await wrapper.vm.$nextTick();
+
+    useAlert.mockClear();
+    await wrapper.vm.saveNotifications();
+    await flushPromises();
+
+    // /notifications actually succeeded, so the error shown must not claim
+    // notifications failed — it must be the stage-specific message.
+    expect(useAlert).toHaveBeenCalledWith(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.STAGE_SAVE_ERROR'
+    );
+    expect(useAlert).not.toHaveBeenCalledWith(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SAVE_ERROR'
+    );
+    expect(useAlert).not.toHaveBeenCalledWith(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SAVE_SUCCESS'
+    );
+
+    // The stage draft must be retained so a re-save can retry just the
+    // stage part, and the dirty flag must reflect that.
+    expect(wrapper.vm.stageNotifyDraft).toEqual({
+      order_drafting: expect.objectContaining({
+        stage_key: 'order_drafting',
+        notify_enabled: false,
+      }),
+    });
+    expect(wrapper.vm.notificationsDirty).toBe(true);
   });
 });
