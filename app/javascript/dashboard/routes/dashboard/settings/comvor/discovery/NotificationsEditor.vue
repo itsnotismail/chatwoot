@@ -403,9 +403,14 @@ const stageRows = computed(() => allRows.value.filter(r => r.isStage));
         </label>
 
         <label class="flex flex-col gap-1">
-          <span class="text-xs font-medium text-n-slate-12">{{
-            t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHAT_ID_LABEL')
-          }}</span>
+          <span class="text-xs font-medium text-n-slate-12">
+            {{ t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHAT_ID_LABEL') }}
+            <InfoHint
+              :text="
+                t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHAT_ID_TOOLTIP')
+              "
+            />
+          </span>
           <input
             data-testid="channel-chat-id-input"
             type="text"
@@ -478,7 +483,7 @@ const stageRows = computed(() => allRows.value.filter(r => r.isStage));
             data-testid="routing-row"
             class="flex items-center justify-between gap-3 px-3 py-2.5 border-b last:border-b-0"
           >
-            <span class="text-sm text-n-slate-12 grow truncate">{{
+            <span class="text-sm text-n-slate-12 flex-1 min-w-0">{{
               row.label
             }}</span>
 
@@ -488,7 +493,7 @@ const stageRows = computed(() => allRows.value.filter(r => r.isStage));
               :aria-label="
                 t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SEND_TO_LABEL')
               "
-              class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+              class="w-64 shrink-0 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
               @change="onRouteChange(row.index, $event.target.value)"
             >
               <option :value="ROUTE_OFF">
@@ -543,7 +548,7 @@ const stageRows = computed(() => allRows.value.filter(r => r.isStage));
             data-testid="routing-row"
             class="flex items-center justify-between gap-3 px-3 py-2.5 border-b last:border-b-0"
           >
-            <span class="text-sm text-n-slate-12 grow truncate">{{
+            <span class="text-sm text-n-slate-12 flex-1 min-w-0">{{
               row.label
             }}</span>
 
@@ -553,7 +558,7 @@ const stageRows = computed(() => allRows.value.filter(r => r.isStage));
               :aria-label="
                 t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SEND_TO_LABEL')
               "
-              class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+              class="w-64 shrink-0 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
               @change="onRouteChange(row.index, $event.target.value)"
             >
               <option :value="ROUTE_OFF">

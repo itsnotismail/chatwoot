@@ -48,4 +48,51 @@ describe('InfoHint.vue', () => {
     await wrapper.find('[data-testid="info-hint-toggle"]').trigger('click');
     expect(wrapper.find('[data-testid="info-hint-text"]').exists()).toBe(false);
   });
+
+  it('clicking outside the hint closes the help text', async () => {
+    const wrapper = mount(
+      {
+        components: { InfoHint },
+        props: ['text'],
+        template: `
+          <div>
+            <InfoHint :text="text" />
+            <button id="outside">outside</button>
+          </div>
+        `,
+      },
+      { props: { text: 'Explains the thing' }, attachTo: document.body }
+    );
+
+    await wrapper.find('[data-testid="info-hint-toggle"]').trigger('click');
+    expect(wrapper.find('[data-testid="info-hint-text"]').exists()).toBe(true);
+
+    wrapper
+      .find('#outside')
+      .element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="info-hint-text"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('pressing Escape closes the help text', async () => {
+    const wrapper = mount(
+      {
+        components: { InfoHint },
+        props: ['text'],
+        template: `<InfoHint :text="text" />`,
+      },
+      { props: { text: 'Explains the thing' }, attachTo: document.body }
+    );
+
+    await wrapper.find('[data-testid="info-hint-toggle"]').trigger('click');
+    expect(wrapper.find('[data-testid="info-hint-text"]').exists()).toBe(true);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="info-hint-text"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
 });

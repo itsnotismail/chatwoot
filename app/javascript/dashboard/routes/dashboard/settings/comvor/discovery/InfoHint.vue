@@ -1,12 +1,37 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, watch, onBeforeUnmount } from 'vue';
 
 defineProps({ text: { type: String, required: true } });
 const open = ref(false);
+const root = ref(null);
+
+// Close the popover when the user clicks anywhere outside it (or presses
+// Escape). The toggle button's own click uses .stop, and this listener is
+// capture-phase + contains()-guarded, so clicking the button toggles rather
+// than double-firing a close.
+function onDocClick(e) {
+  if (root.value && !root.value.contains(e.target)) open.value = false;
+}
+function onKeydown(e) {
+  if (e.key === 'Escape') open.value = false;
+}
+watch(open, isOpen => {
+  if (isOpen) {
+    document.addEventListener('click', onDocClick, true);
+    document.addEventListener('keydown', onKeydown);
+  } else {
+    document.removeEventListener('click', onDocClick, true);
+    document.removeEventListener('keydown', onKeydown);
+  }
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick, true);
+  document.removeEventListener('keydown', onKeydown);
+});
 </script>
 
 <template>
-  <span class="relative inline-block">
+  <span ref="root" class="relative inline-block">
     <button
       type="button"
       data-testid="info-hint-toggle"

@@ -188,6 +188,7 @@
         "BOT_TOKEN_SAVED_PLACEHOLDER": "Saved — enter a new token to replace",
         "NEW_CHANNEL_TOKEN_REQUIRED_HINT": "Enter a bot token for each new channel before saving.",
         "CHAT_ID_LABEL": "Chat ID",
+        "CHAT_ID_TOOLTIP": "The Telegram chat, group, or channel where alerts are sent. Add your bot to it, send it a message, then get the ID from @userinfobot or the bot's getUpdates. Group/channel IDs look like -100xxxxxxxxxx.",
         "ENABLED_LABEL": "Enabled",
         "ADD_CHANNEL": "Add channel",
         "REMOVE_CHANNEL": "Remove channel",
