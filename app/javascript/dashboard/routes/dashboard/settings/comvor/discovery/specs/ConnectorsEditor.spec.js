@@ -16,46 +16,15 @@ function mountEditor(props = {}) {
   });
 }
 
+// NOTE: this component used to also render a connector ENABLE checkbox list
+// (one checkbox per `connectors.available`) with its own emit path, tested
+// here previously. That list moved out to the unified Connector tab in
+// Index.vue (see ConnectorTab.spec.js) — enabling now happens via "connect"
+// (choosing the type + saving), which also flips the account_connectors
+// enabled list. ConnectorsEditor now renders only the soft-wall capability
+// toggles and the provider-conflict select, so those enable-checkbox specs
+// were removed rather than weakened.
 describe('ConnectorsEditor.vue', () => {
-  it('renders a checkbox per available connector, checked if enabled', () => {
-    const wrapper = mountEditor();
-    const checkboxes = wrapper.findAll(
-      'input[data-testid="connector-checkbox"]'
-    );
-    expect(checkboxes).toHaveLength(2);
-    expect(checkboxes[0].element.checked).toBe(true); // ewity is enabled
-    expect(checkboxes[1].element.checked).toBe(false); // shopify is not enabled
-  });
-
-  it('emits update:connectors with the updated enabled array when toggling an available connector', async () => {
-    const wrapper = mountEditor();
-    const checkboxes = wrapper.findAll(
-      'input[data-testid="connector-checkbox"]'
-    );
-    await checkboxes[1].setValue(true); // enable shopify
-
-    const emitted = wrapper.emitted('update:connectors');
-    expect(emitted).toBeTruthy();
-    const lastEvent = emitted[emitted.length - 1][0];
-    expect(lastEvent.enabled).toEqual(
-      expect.arrayContaining(['ewity', 'shopify'])
-    );
-    expect(lastEvent.enabled).toHaveLength(2);
-  });
-
-  it('emits update:connectors with a shrunk enabled array when disabling an enabled connector', async () => {
-    const wrapper = mountEditor();
-    const checkboxes = wrapper.findAll(
-      'input[data-testid="connector-checkbox"]'
-    );
-    await checkboxes[0].setValue(false); // disable ewity
-
-    const emitted = wrapper.emitted('update:connectors');
-    expect(emitted).toBeTruthy();
-    const lastEvent = emitted[emitted.length - 1][0];
-    expect(lastEvent.enabled).toEqual([]);
-  });
-
   it('renders an unchecked capability box for a capability in disabled_capabilities, and re-enabling it removes it from the emitted array', async () => {
     const wrapper = mountEditor({
       connectors: {

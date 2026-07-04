@@ -2,6 +2,14 @@
 import { reactive, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+// NOTE: this component used to also render a connector ENABLE checkbox list
+// (one checkbox per entry in `connectors.available`) plus its own "Save
+// Connectors" button. That list has moved to the unified Connector tab in
+// Index.vue, where "connect Ewity" (choosing the type + saving) now also
+// enables it in account_connectors — see `syncConnectorEnabled` there. This
+// component now renders only the soft-wall capability toggles (which
+// capabilities stay usable even while a connector is enabled) and the
+// provider-conflict <select> (relevant once >1 connector can be enabled).
 const props = defineProps({
   connectors: { type: Object, required: true },
   softWarnings: { type: Array, default: () => [] },
@@ -21,7 +29,6 @@ const { t } = useI18n();
 const state = reactive({
   enabled: [],
   providers: {},
-  available: [],
   disabledCapabilities: [],
 });
 
@@ -30,7 +37,6 @@ watch(
   connectors => {
     state.enabled = [...(connectors.enabled || [])];
     state.providers = { ...(connectors.providers || {}) };
-    state.available = [...(connectors.available || [])];
     state.disabledCapabilities = [...(connectors.disabled_capabilities || [])];
   },
   { immediate: true }
@@ -59,17 +65,6 @@ function emitUpdate() {
   });
 }
 
-function toggleConnector(connector, checked) {
-  if (checked) {
-    if (!state.enabled.includes(connector)) {
-      state.enabled = [...state.enabled, connector];
-    }
-  } else {
-    state.enabled = state.enabled.filter(c => c !== connector);
-  }
-  emitUpdate();
-}
-
 function onProviderChange(capability, value) {
   state.providers = { ...state.providers, [capability]: value };
   emitUpdate();
@@ -89,21 +84,6 @@ function toggleCapability(capability, checked) {
 
 <template>
   <div class="flex flex-col gap-3">
-    <label
-      v-for="connector in state.available"
-      :key="connector"
-      class="flex items-center gap-2"
-    >
-      <input
-        data-testid="connector-checkbox"
-        type="checkbox"
-        :checked="state.enabled.includes(connector)"
-        class="w-4 h-4 accent-n-brand"
-        @change="toggleConnector(connector, $event.target.checked)"
-      />
-      <span class="text-xs font-medium text-n-slate-12">{{ connector }}</span>
-    </label>
-
     <label
       v-for="capability in capabilitiesNeedingProvider"
       :key="capability"

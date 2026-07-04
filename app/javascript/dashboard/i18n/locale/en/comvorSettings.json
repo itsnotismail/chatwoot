@@ -309,6 +309,7 @@
       "TYPE_LABEL": "Connector type",
       "TYPE_NONE": "None",
       "TYPE_EWITY": "Ewity POS",
+      "ADVANCED_LABEL": "Advanced",
       "EWITY": {
         "TOKEN_LABEL": "API Token",
         "TOKEN_PLACEHOLDER": "uat_...",

@@ -38,6 +38,17 @@ const EWITY_REQUIRED_PERMISSIONS = EWITY_PERMISSIONS.filter(
   p => p.required
 ).map(p => p.key);
 
+// Label keys for the connector-type <select>. The list of *options* rendered
+// is data-driven off compatibleConnectors (which is itself GA-gated by the
+// backend's /verticals response) — this map only supplies display labels, so
+// an untested connector (e.g. shopify) can never appear here even if it were
+// ever added to this map by mistake, since it still has to show up in
+// compatibleConnectors first.
+const CONNECTOR_TYPE_LABELS = {
+  none: 'COMVOR_SETTINGS.CONNECTOR.TYPE_NONE',
+  ewity: 'COMVOR_SETTINGS.CONNECTOR.TYPE_EWITY',
+};
+
 const connectorType = ref('none');
 const ewityToken = ref('');
 const ewityTokenHint = ref('');
@@ -193,6 +204,41 @@ async function loadConnectors() {
 function onConnectorsUpdate(update) {
   connectors.value = { ...connectors.value, ...update };
   connectorsDirty.value = true;
+}
+
+// Gates the collapsed "Advanced" section: only worth showing when there's a
+// soft-wall toggle to actually show (disabled_capabilities from the backend).
+// Mirrors ConnectorsEditor's own toggleableCapabilities computed, since
+// soft-warnings are always passed as [] here (capability toggles are
+// admin-level, not surfaced as live warnings on this tab).
+const hasToggleableCapabilities = computed(
+  () => (connectors.value?.disabled_capabilities || []).length > 0
+);
+
+// Connect-to-enable: choosing/saving a connector type in the unified panel
+// must also flip it on in account_connectors (the `enabled` list), since
+// that's the table the runtime actually resolves capabilities from. Before
+// this, only the standalone enable-checkbox list did that, which meant
+// "connecting" Ewity here didn't do anything until a merchant separately
+// found and checked the box below.
+async function syncConnectorEnabled() {
+  if (!engineURL()) return;
+  const enabled = new Set(connectors.value?.enabled || []);
+  if (connectorType.value === 'ewity') enabled.add('ewity');
+  else enabled.delete('ewity');
+  const res = await fetch(
+    `${engineURL()}/api/accounts/${accountId}/connectors`,
+    {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        enabled: [...enabled],
+        providers: connectors.value?.providers || {},
+        disabled_capabilities: connectors.value?.disabled_capabilities || [],
+      }),
+    }
+  );
+  if (!res.ok) throw new Error(await res.text());
 }
 
 async function saveConnectors() {
@@ -487,6 +533,8 @@ async function saveConnector() {
         }
       }
     }
+    await syncConnectorEnabled();
+    await loadConnectors();
     useAlert(t('COMVOR_SETTINGS.CONNECTOR.EWITY.SAVE_SUCCESS'));
   } catch (e) {
     useAlert(e.message || t('COMVOR_SETTINGS.CONNECTOR.EWITY.SAVE_ERROR'));
@@ -1181,19 +1229,11 @@ onMounted(fetchSettings);
               </label>
               <select
                 v-model="connectorType"
+                data-testid="connector-type-select"
                 class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
               >
-                <option
-                  v-if="compatibleConnectors.includes('none')"
-                  value="none"
-                >
-                  {{ t('COMVOR_SETTINGS.CONNECTOR.TYPE_NONE') }}
-                </option>
-                <option
-                  v-if="compatibleConnectors.includes('ewity')"
-                  value="ewity"
-                >
-                  {{ t('COMVOR_SETTINGS.CONNECTOR.TYPE_EWITY') }}
+                <option v-for="c in compatibleConnectors" :key="c" :value="c">
+                  {{ t(CONNECTOR_TYPE_LABELS[c] || c) }}
                 </option>
               </select>
             </div>
@@ -1341,36 +1381,42 @@ onMounted(fetchSettings);
         </div>
 
         <SectionLayout
-          v-if="connectors"
-          :title="t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.TITLE')"
+          v-if="connectors && hasToggleableCapabilities"
+          title=""
+          description=""
           with-border
         >
-          <ConnectorsEditor
-            :connectors="connectors"
-            :soft-warnings="[]"
-            @update:connectors="onConnectorsUpdate"
-          />
+          <details class="group">
+            <summary
+              class="cursor-pointer text-sm font-medium text-n-slate-12 select-none"
+            >
+              {{ t('COMVOR_SETTINGS.CONNECTOR.ADVANCED_LABEL') }}
+            </summary>
+            <div class="mt-4 flex flex-col gap-3">
+              <ConnectorsEditor
+                :connectors="connectors"
+                :soft-warnings="[]"
+                @update:connectors="onConnectorsUpdate"
+              />
+              <div class="flex items-center justify-end gap-3">
+                <span v-if="connectorsDirty" class="text-xs text-amber-600">
+                  {{ t('COMVOR_SETTINGS.DISCOVERY.UNSAVED_CHANGES') }}
+                </span>
+                <button
+                  class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
+                  :disabled="isSavingConnectors"
+                  @click="saveConnectors"
+                >
+                  {{
+                    isSavingConnectors
+                      ? t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVING')
+                      : t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE')
+                  }}
+                </button>
+              </div>
+            </div>
+          </details>
         </SectionLayout>
-
-        <div
-          v-if="connectors"
-          class="flex items-center justify-end gap-3 px-6 py-4"
-        >
-          <span v-if="connectorsDirty" class="text-xs text-amber-600">
-            {{ t('COMVOR_SETTINGS.DISCOVERY.UNSAVED_CHANGES') }}
-          </span>
-          <button
-            class="rounded-lg bg-n-brand px-4 py-2 text-sm font-medium text-white hover:bg-n-brand/90 disabled:opacity-50"
-            :disabled="isSavingConnectors"
-            @click="saveConnectors"
-          >
-            {{
-              isSavingConnectors
-                ? t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVING')
-                : t('COMVOR_SETTINGS.DISCOVERY.CONNECTORS.SAVE')
-            }}
-          </button>
-        </div>
       </template>
 
       <!-- ── Tab 5: Discovery Flow ── -->
