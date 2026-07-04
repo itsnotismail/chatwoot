@@ -206,9 +206,13 @@ describe('SupportIntentsEditor.vue', () => {
     );
   });
 
-  it('a read wall (has_action false) disables the row and shows the connector pointer', () => {
+  it('a read wall (has_action false) keeps the enable checkbox usable so the intent can be turned off, and shows the connector pointer', async () => {
     const flow = baseFlow();
+    // Enabled read-walled intent: the wall blocks publish, but the merchant
+    // must still be able to untick it to clear the wall (turning it off drops
+    // the capability requirement) — the checkbox must NOT be disabled.
     flow.stages[1].has_action = false;
+    flow.stages[1].skipped = false;
     const walls = [
       {
         flow_key: 'support',
@@ -221,13 +225,22 @@ describe('SupportIntentsEditor.vue', () => {
     const wrapper = mountEditor({ flow, walls });
     const row = wrapper.findAll('[data-testid="intent-row"]')[1];
 
-    expect(
-      row.find('[data-testid="enable-toggle"]').attributes('disabled')
-    ).toBeDefined();
+    const toggle = row.find('[data-testid="enable-toggle"]');
+    expect(toggle.attributes('disabled')).toBeUndefined();
     expect(row.text()).toContain('no connector provides order.read');
     expect(row.text()).toContain(
       'COMVOR_SETTINGS.DISCOVERY.SUPPORT_EDITOR.READ_WALL_POINTER'
     );
+
+    // Unticking it (the fix for the wall) emits a skipped-only payload.
+    await toggle.setValue(false);
+    const emitted = wrapper.emitted('update:stage');
+    const last = emitted[emitted.length - 1][0];
+    expect(last).toMatchObject({
+      flow_key: 'support',
+      stage_key: 'order_status',
+      skipped: true,
+    });
   });
 
   it('an action wall (has_action true) keeps the row fully editable and shows a badge', async () => {

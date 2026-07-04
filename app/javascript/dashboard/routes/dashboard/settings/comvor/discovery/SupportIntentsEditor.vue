@@ -37,8 +37,11 @@ function wallFor(stageKey) {
 
 // A wall on a stage is either:
 //  - a "read wall": the stage has no action capability (has_action === false),
-//    so the wall is blocking the read this intent depends on. Nothing on the
-//    card can fix that — the row stays disabled until a connector is added.
+//    so the wall is blocking the read this intent depends on. The merchant has
+//    TWO ways out and both must stay reachable: add a connector that provides
+//    the read, OR turn the intent off (unticking skips it, which drops the
+//    capability requirement and clears the wall). So the enable checkbox is
+//    NEVER disabled — the wall message just points at both fixes.
 //  - an "action wall": the stage has an action capability (has_action ===
 //    true) and the wall is on that action. The fix is on the card itself
 //    (switch who-completes to "Bot prepares, your team completes"), so the
@@ -94,7 +97,6 @@ function setGuidance(stage, value) {
           type="checkbox"
           data-testid="enable-toggle"
           :checked="!stage.skipped"
-          :disabled="isReadWall(stage)"
           :aria-label="
             t(
               'COMVOR_SETTINGS.DISCOVERY.SUPPORT_EDITOR.ENABLE_TOGGLE_ARIA_LABEL',
@@ -135,7 +137,7 @@ function setGuidance(stage, value) {
       </div>
 
       <p
-        v-if="isReadWall(stage)"
+        v-if="isReadWall(stage) && !stage.skipped"
         data-testid="read-wall-message"
         class="text-xs text-amber-700 dark:text-amber-400 ml-6"
       >

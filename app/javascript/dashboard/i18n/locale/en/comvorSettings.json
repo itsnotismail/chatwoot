@@ -158,7 +158,7 @@
         "GUIDANCE_TOOLTIP": "Extra steps for the bot to follow, beyond your standard policies.",
         "GUIDANCE_HINT": "Your return & cancellation policies already apply (see the Policies tab). Use this only for extra steps — e.g. \"always ask for a photo of the damaged item\".",
         "CHAR_COUNT": "{count}/{max}",
-        "READ_WALL_POINTER": "Connect one in the Connector tab.",
+        "READ_WALL_POINTER": "Connect one in the Connector tab, or turn this off to publish.",
         "ACTION_WALL_BADGE": "No connector for this action yet — consider switching who completes it.",
         "EXPAND_LABEL": "Expand",
         "COLLAPSE_LABEL": "Collapse"
