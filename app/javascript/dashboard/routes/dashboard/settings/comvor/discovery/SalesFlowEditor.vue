@@ -2,6 +2,7 @@
 import { reactive, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import JourneyStrip from './JourneyStrip.vue';
+import InfoHint from './InfoHint.vue';
 
 const props = defineProps({
   flow: { type: Object, required: true },
@@ -175,15 +176,13 @@ function toggleGuidance(stageKey) {
             {{
               t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.WHO_COMPLETES_LABEL')
             }}
-            <span
-              :title="
+            <InfoHint
+              :text="
                 t(
                   'COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.WHO_COMPLETES_TOOLTIP'
                 )
               "
-              class="cursor-help text-n-slate-9"
-              >?</span
-            >
+            />
           </span>
           <select
             data-testid="who-completes-select"
@@ -209,13 +208,9 @@ function toggleGuidance(stageKey) {
         <div v-if="stage.stage_key === cutoffKey" class="flex flex-col gap-1">
           <span class="text-xs font-medium text-n-slate-12">
             {{ t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.FINISH_LABEL') }}
-            <span
-              :title="
-                t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.FINISH_TOOLTIP')
-              "
-              class="cursor-help text-n-slate-9"
-              >?</span
-            >
+            <InfoHint
+              :text="t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.FINISH_TOOLTIP')"
+            />
           </span>
           <div class="flex items-center gap-4">
             <label class="flex items-center gap-1.5 text-xs">

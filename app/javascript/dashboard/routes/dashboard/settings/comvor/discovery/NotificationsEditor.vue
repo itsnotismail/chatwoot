@@ -1,6 +1,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import InfoHint from './InfoHint.vue';
 
 const props = defineProps({
   notifications: { type: Object, required: true },
@@ -304,13 +305,11 @@ const allRows = computed(() => {
           />
           <span class="text-xs font-medium text-n-slate-12">
             {{ t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.DEFAULT_LABEL') }}
-            <span
-              :title="
+            <InfoHint
+              :text="
                 t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.DEFAULT_TOOLTIP')
               "
-              class="cursor-help text-n-slate-9"
-              >?</span
-            >
+            />
           </span>
         </label>
 
@@ -442,13 +441,11 @@ const allRows = computed(() => {
         >
           <span class="text-xs font-medium text-n-slate-12">
             {{ t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.TEMPLATE_LABEL') }}
-            <span
-              :title="
+            <InfoHint
+              :text="
                 t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.TEMPLATE_TOOLTIP')
               "
-              class="cursor-help text-n-slate-9"
-              >?</span
-            >
+            />
           </span>
           <input
             data-testid="route-template-input"
