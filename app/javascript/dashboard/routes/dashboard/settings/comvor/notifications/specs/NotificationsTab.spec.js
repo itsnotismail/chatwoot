@@ -258,4 +258,35 @@ describe('NotificationsTab.vue', () => {
     const routingRows = wrapper.findAll('[data-testid="routing-row"]');
     expect(routingRows).toHaveLength(2);
   });
+
+  it('notificationsDirty is a computed comparison against the loaded baseline: true after an edit, false again once reverted by hand', async () => {
+    const wrapper = mount(NotificationsTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    expect(wrapper.vm.notificationsDirty).toBe(false);
+
+    wrapper.vm.onNotificationsUpdate({
+      channels: [],
+      subscriptions: [],
+      muted_events: ['resolved'],
+    });
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.vm.notificationsDirty).toBe(true);
+
+    // Revert by hand back to the loaded value (empty muted_events). Because
+    // the flag is a computed diff against the baseline (not a one-way
+    // latch), it must clear again instead of staying stuck.
+    wrapper.vm.onNotificationsUpdate({
+      channels: [],
+      subscriptions: [],
+      muted_events: [],
+    });
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.vm.notificationsDirty).toBe(false);
+  });
 });

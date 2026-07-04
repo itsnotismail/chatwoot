@@ -16,7 +16,21 @@ const store = useStore();
 const isLoading = ref(false);
 const isSavingNotifications = ref(false);
 const notifications = ref(null);
-const notificationsDirty = ref(false);
+// Baseline snapshot captured on load, used to compute dirty state as a diff
+// rather than a one-way latch — reverting an edit by hand clears the
+// "unsaved changes" message instead of leaving it stuck.
+const notificationsBaseline = ref('');
+function serializeNotifications() {
+  const n = notifications.value || {};
+  return JSON.stringify({
+    channels: n.channels || [],
+    subscriptions: n.subscriptions || [],
+    muted_events: n.muted_events || [],
+  });
+}
+const notificationsDirty = computed(
+  () => serializeNotifications() !== notificationsBaseline.value
+);
 // Read-only: fetched purely to learn which stages are notifiable (their
 // stage_key + display_name) so the routing table can offer one row per
 // stage-completion event. Never PUT back from here.
@@ -64,6 +78,7 @@ async function loadNotifications() {
       headers: authHeaders(),
     });
     if (notif.ok) notifications.value = await notif.json();
+    notificationsBaseline.value = serializeNotifications();
     await loadNotifiableStages();
   } catch (e) {
     useAlert(t('COMVOR_SETTINGS.FETCH_ERROR'));
@@ -74,7 +89,6 @@ async function loadNotifications() {
 
 function onNotificationsUpdate(update) {
   notifications.value = { ...notifications.value, ...update };
-  notificationsDirty.value = true;
 }
 
 async function saveNotifications() {
@@ -95,7 +109,6 @@ async function saveNotifications() {
       throw new Error(msg || `HTTP ${res.status}`);
     }
     await loadNotifications();
-    notificationsDirty.value = false;
     useAlert(t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SAVE_SUCCESS'));
   } catch (e) {
     useAlert(

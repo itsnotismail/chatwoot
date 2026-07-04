@@ -634,4 +634,35 @@ describe('DiscoveryFlowTab.vue', () => {
     );
     expect(updatedStage.on_complete).toBe('handoff');
   });
+
+  it('hasUnsavedChanges is a computed comparison against the loaded baseline: false on load, true after an edit, and false again once the edit is reverted by hand', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    expect(wrapper.vm.hasUnsavedChanges).toBe(false);
+
+    wrapper.vm.onStageUpdate({
+      flow_key: 'sales',
+      stage_key: 'discovery',
+      on_complete: 'handoff',
+    });
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.vm.hasUnsavedChanges).toBe(true);
+
+    // Revert by hand back to the value that was loaded ('continue'). Because
+    // the flag is a computed diff against the baseline snapshot (not a
+    // one-way latch), it must clear again instead of staying stuck.
+    wrapper.vm.onStageUpdate({
+      flow_key: 'sales',
+      stage_key: 'discovery',
+      on_complete: 'continue',
+    });
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.vm.hasUnsavedChanges).toBe(false);
+  });
 });

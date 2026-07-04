@@ -45,8 +45,32 @@ function stageDisplayName(flowKey, stageKey) {
   return stage?.display_name || stageKey;
 }
 const draftStages = ref({});
-const flowDirty = ref(false);
-const hasUnsavedChanges = computed(() => flowDirty.value);
+// Baseline snapshot of editable per-stage fields, captured on load and after
+// each successful save. hasUnsavedChanges is a computed diff against this
+// baseline (not a one-way latch), so reverting an edit by hand — e.g. moving
+// the cutoff back to where it was — clears the "unsaved changes" message
+// instead of leaving it stuck and risking a no-op save PUT.
+const flowBaseline = ref('');
+function serializeFlows() {
+  return JSON.stringify(
+    (flowConfig.value?.flows || []).map(f => ({
+      flow_key: f.flow_key,
+      stages: (f.stages || []).map(s => ({
+        stage_key: s.stage_key,
+        on_complete: s.on_complete,
+        action_mode: s.action_mode,
+        guidance: s.guidance,
+        skipped: s.skipped,
+        notify_enabled: s.notify_enabled,
+        notify_guidance: s.notify_guidance,
+        enabled_reads: s.enabled_reads,
+      })),
+    }))
+  );
+}
+const hasUnsavedChanges = computed(
+  () => serializeFlows() !== flowBaseline.value
+);
 const hardErrors = ref([]);
 const softWarnings = ref([]);
 const showPublishModal = ref(false);
@@ -82,6 +106,8 @@ const versionId = ref(0);
 function applyFlowConfig(resp) {
   flowConfig.value = resp;
   versionId.value = resp?.version_id || 0;
+  flowBaseline.value = serializeFlows();
+  draftStages.value = {};
 }
 
 function authHeaders() {
@@ -134,7 +160,6 @@ function onStageUpdate(update) {
     const { flow_key: _fk, stage_key: _sk, ...fields } = update;
     Object.assign(stage, fields);
   }
-  flowDirty.value = true;
 }
 
 async function saveDraft() {
@@ -174,8 +199,6 @@ async function saveDraft() {
       // reload the latest and drop the local edits rather than clobbering.
       useAlert(t('COMVOR_SETTINGS.DISCOVERY.VERSION_CONFLICT_RELOADED'));
       await loadFlowConfig();
-      draftStages.value = {};
-      flowDirty.value = false;
       return;
     }
     if (!res.ok) {
@@ -183,8 +206,6 @@ async function saveDraft() {
       throw new Error(msg || `HTTP ${res.status}`);
     }
     await loadFlowConfig();
-    draftStages.value = {};
-    flowDirty.value = false;
     // Surface the refreshed draft's walls right away — "this draft can't be
     // published yet" — instead of waiting for a publish attempt to fail.
     hardErrors.value = flowConfig.value?.hard_errors || [];
@@ -200,7 +221,7 @@ async function saveDraft() {
 }
 
 async function publish() {
-  if (!props.engineUrl || flowDirty.value) return;
+  if (!props.engineUrl || hasUnsavedChanges.value) return;
   isPublishing.value = true;
   try {
     const res = await fetch(url('/flow-config/publish'), {
@@ -232,7 +253,7 @@ async function publish() {
 }
 
 function openPublishModal() {
-  if (flowDirty.value) return;
+  if (hasUnsavedChanges.value) return;
   showPublishModal.value = true;
 }
 
@@ -258,7 +279,6 @@ defineExpose({
   hardErrors,
   softWarnings,
   hasUnsavedChanges,
-  flowDirty,
   activeSubTab,
   stageDisplayName,
   onStageUpdate,
@@ -380,9 +400,9 @@ defineExpose({
         <button
           type="button"
           data-testid="publish-button"
-          :disabled="flowDirty || isPublishing"
+          :disabled="hasUnsavedChanges || isPublishing"
           :title="
-            flowDirty
+            hasUnsavedChanges
               ? t('COMVOR_SETTINGS.DISCOVERY.PUBLISH_DISABLED_UNSAVED_HINT')
               : null
           "
