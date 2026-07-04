@@ -110,13 +110,20 @@ function mockFetch({ publishResponse, putResponse } = {}) {
       return Promise.resolve({
         ok: true,
         status: 200,
-        json: () => Promise.resolve({ ...flowConfig, status: currentStatus }),
+        // Deep-clone so mutating a returned stage (as onStageUpdate now does
+        // to reflect edits before save) never leaks into the shared fixture
+        // or across other tests/fetches in this file.
+        json: () =>
+          Promise.resolve({
+            ...structuredClone(flowConfig),
+            status: currentStatus,
+          }),
         text: () => Promise.resolve(''),
       });
     }
     let body = {};
     if (url.endsWith('/flow-config'))
-      body = { ...flowConfig, status: currentStatus };
+      body = { ...structuredClone(flowConfig), status: currentStatus };
     return Promise.resolve({
       ok: true,
       status: 200,
@@ -595,5 +602,36 @@ describe('DiscoveryFlowTab.vue', () => {
 
     const pill = wrapper.find('[data-testid="status-pill"]');
     expect(pill.text()).toBe('COMVOR_SETTINGS.STATUS_PILL.DEFAULTS');
+  });
+
+  it('onStageUpdate reflects the edit into flowConfig immediately, before save', async () => {
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    const salesFlow = wrapper.vm.flowConfig.flows.find(
+      f => f.flow_key === 'sales'
+    );
+    const discoveryStage = salesFlow.stages.find(
+      s => s.stage_key === 'discovery'
+    );
+    expect(discoveryStage.on_complete).toBe('continue');
+
+    wrapper.vm.onStageUpdate({
+      flow_key: 'sales',
+      stage_key: 'discovery',
+      on_complete: 'handoff',
+    });
+    await wrapper.vm.$nextTick();
+
+    const updatedFlow = wrapper.vm.flowConfig.flows.find(
+      f => f.flow_key === 'sales'
+    );
+    const updatedStage = updatedFlow.stages.find(
+      s => s.stage_key === 'discovery'
+    );
+    expect(updatedStage.on_complete).toBe('handoff');
   });
 });

@@ -123,6 +123,17 @@ function onStageUpdate(update) {
     ...draftStages.value,
     [key]: { ...draftStages.value[key], ...update },
   };
+  // Optimistically reflect the edit in the rendered config so derived UI
+  // (cutoff zones, the handoff marker, who-completes) updates immediately
+  // instead of only after a save+reload.
+  const flow = (flowConfig.value?.flows || []).find(
+    f => f.flow_key === update.flow_key
+  );
+  const stage = flow?.stages?.find(s => s.stage_key === update.stage_key);
+  if (stage) {
+    const { flow_key: _fk, stage_key: _sk, ...fields } = update;
+    Object.assign(stage, fields);
+  }
   flowDirty.value = true;
 }
 
@@ -250,6 +261,7 @@ defineExpose({
   flowDirty,
   activeSubTab,
   stageDisplayName,
+  onStageUpdate,
 });
 </script>
 
