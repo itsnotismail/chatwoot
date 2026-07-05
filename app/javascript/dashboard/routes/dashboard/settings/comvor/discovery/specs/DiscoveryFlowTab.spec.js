@@ -324,6 +324,51 @@ describe('DiscoveryFlowTab.vue', () => {
     expect(publishCall[1].method).toBe('POST');
   });
 
+  // The dejargoned automatic-mode wall message (comvor-engine's
+  // flowcfg.ValidatePublish "action wall" branch) reuses the "Who completes
+  // this step" select's exact option labels ("Bot completes it" / "Bot
+  // prepares, your team completes") instead of the stale internal terms
+  // "Automatic mode"/"Confirm-only". The banner just renders whatever
+  // message the API sends (like the generic-message test above) — this
+  // pins that the new copy, including its em dash and quoted labels,
+  // survives the round trip intact (no vue-i18n involved here, so no `@`
+  // escaping concern, but the quotes/em-dash must not get mangled).
+  it('publish 422 renders the dejargoned automatic-mode wall message in the banner', async () => {
+    mockFetch({
+      publishResponse: {
+        ok: false,
+        status: 422,
+        json: () =>
+          Promise.resolve({
+            hard_errors: [
+              {
+                flow_key: 'sales',
+                stage_key: 'order_drafting',
+                capability: 'order.draft',
+                kind: 'hard',
+                message:
+                  '"Bot completes it" needs a connected system providing order.draft. Choose "Bot prepares, your team completes" instead — or connect one under Connectors.',
+              },
+            ],
+            soft_warnings: [],
+          }),
+        text: () => Promise.resolve(''),
+      },
+    });
+    const wrapper = mount(DiscoveryFlowTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    await wrapper.vm.publish();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(
+      '"Bot completes it" needs a connected system providing order.draft. Choose "Bot prepares, your team completes" instead — or connect one under Connectors.'
+    );
+  });
+
   it('publish 200 flips status to published and clears prior errors', async () => {
     mockFetch();
     const wrapper = mount(DiscoveryFlowTab, {

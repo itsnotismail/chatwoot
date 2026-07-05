@@ -49,6 +49,41 @@ const DEFAULT_TEMPLATES = {
   'stage:payment_fulfillment': '📦 Payment completed — {summary} → {link}',
 };
 
+// Mirrors the API's `placeholders` shape (see comvor-engine's
+// TestNotifications_GET_Placeholders_And_Events): ordered [{key, label}]
+// chip lists per event key, stage rows keyed by `stage:<stage_key>`.
+const PLACEHOLDERS = {
+  new_order: [
+    { key: 'items', label: 'Items' },
+    { key: 'address', label: 'Address' },
+    { key: 'phone', label: 'Phone' },
+    { key: 'payment', label: 'Payment' },
+    { key: 'summary', label: 'Summary' },
+    { key: 'link', label: 'Link' },
+  ],
+  handoff: [
+    { key: 'reason', label: 'Reason' },
+    { key: 'link', label: 'Link' },
+  ],
+  resolved: [
+    { key: 'summary', label: 'Summary' },
+    { key: 'link', label: 'Link' },
+  ],
+  'stage:order_drafting': [
+    { key: 'stage', label: 'Stage' },
+    { key: 'summary', label: 'Summary' },
+    { key: 'link', label: 'Link' },
+  ],
+  'stage:payment_fulfillment': [
+    { key: 'stage', label: 'Stage' },
+    { key: 'summary', label: 'Summary' },
+    { key: 'link', label: 'Link' },
+  ],
+};
+
+// Mirrors the API's `events` list: outcome events only (new_order).
+const EVENTS = [{ key: 'new_order', label: 'New order' }];
+
 function baseNotifications(overrides = {}) {
   return {
     channels: [
@@ -63,6 +98,8 @@ function baseNotifications(overrides = {}) {
     subscriptions: [],
     muted_events: [],
     default_templates: DEFAULT_TEMPLATES,
+    placeholders: PLACEHOLDERS,
+    events: EVENTS,
     ...overrides,
   };
 }
@@ -329,9 +366,8 @@ describe('NotificationsEditor.vue', () => {
     const rows = wrapper.findAll('[data-testid="routing-row"]');
     // new_order, handoff, resolved, order_drafting, payment_fulfillment
     expect(rows).toHaveLength(5);
-    expect(wrapper.text()).toContain(
-      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.EVENT_NEW_ORDER'
-    );
+    // new_order's label comes from the API's `events` list, not i18n.
+    expect(wrapper.text()).toContain('New order');
     expect(wrapper.text()).toContain(
       'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.EVENT_HANDOFF'
     );
@@ -340,6 +376,25 @@ describe('NotificationsEditor.vue', () => {
     );
     expect(wrapper.text()).toContain('Order taking completed');
     expect(wrapper.text()).toContain('Payment completed');
+  });
+
+  it("uses the API's events list (find by key) for the new_order row label", () => {
+    const wrapper = mountEditor({
+      notifications: baseNotifications({
+        events: [{ key: 'new_order', label: 'Custom order label from API' }],
+      }),
+    });
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    expect(rows[0].text()).toContain('Custom order label from API');
+  });
+
+  it('falls back to the event key for new_order when the API omits it from events', () => {
+    const wrapper = mountEditor({
+      notifications: baseNotifications({ events: [] }),
+    });
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    expect(rows).toHaveLength(5);
+    expect(wrapper.text()).toContain('new_order');
   });
 
   it('renders one flat list with no group subheaders and no per-row "Channel" label', () => {
@@ -719,57 +774,45 @@ describe('NotificationsEditor.vue', () => {
     expect(templateInput.element.value).toBe('default-routed custom');
   });
 
-  // ── Placeholder chips ──
-  it('renders the new_order event chip set (Items/Address/Phone/Payment/Summary/Link)', () => {
+  // ── Placeholder chips (data-driven from the API's `placeholders`) ──
+  it('renders the new_order row chips from API placeholders, in API order, with API labels verbatim', () => {
     const wrapper = mountEditor();
     const rows = wrapper.findAll('[data-testid="routing-row"]');
     const chips = rows[0].findAll('[data-testid="template-chip"]');
     const labels = chips.map(c => c.text());
-    expect(labels).toEqual(
-      expect.arrayContaining([
-        'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_ITEMS',
-        'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_ADDRESS',
-        'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_PHONE',
-        'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_PAYMENT',
-        'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_SUMMARY',
-        'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_LINK',
-      ])
-    );
+    expect(labels).toEqual([
+      'Items',
+      'Address',
+      'Phone',
+      'Payment',
+      'Summary',
+      'Link',
+    ]);
   });
 
-  it('renders the handoff event chip set (Reason/Link only, no order chips)', () => {
+  it('renders the handoff row chips from its own placeholders entry (Reason/Link only, no order chips)', () => {
     const wrapper = mountEditor();
     const rows = wrapper.findAll('[data-testid="routing-row"]');
     const chips = rows[1].findAll('[data-testid="template-chip"]');
     const labels = chips.map(c => c.text());
-    expect(labels).toEqual([
-      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_REASON',
-      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_LINK',
-    ]);
+    expect(labels).toEqual(['Reason', 'Link']);
   });
 
-  it('renders the resolved event chip set (Summary/Link only)', () => {
+  it('renders the resolved row chips from its own placeholders entry (Summary/Link only)', () => {
     const wrapper = mountEditor();
     const rows = wrapper.findAll('[data-testid="routing-row"]');
     const chips = rows[2].findAll('[data-testid="template-chip"]');
     const labels = chips.map(c => c.text());
-    expect(labels).toEqual([
-      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_SUMMARY',
-      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_LINK',
-    ]);
+    expect(labels).toEqual(['Summary', 'Link']);
   });
 
-  it('renders the stage-completion event chip set (Stage/Summary/Link)', () => {
+  it('renders a stage row chips from its `stage:<key>` placeholders entry (Stage/Summary/Link)', () => {
     const wrapper = mountEditor();
     const rows = wrapper.findAll('[data-testid="routing-row"]');
     // Fifth row is payment_fulfillment (Default, not Off).
     const chips = rows[4].findAll('[data-testid="template-chip"]');
     const labels = chips.map(c => c.text());
-    expect(labels).toEqual([
-      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_STAGE',
-      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_SUMMARY',
-      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_LINK',
-    ]);
+    expect(labels).toEqual(['Stage', 'Summary', 'Link']);
   });
 
   it('typing directly into the template field persists the value and round-trips it', async () => {
@@ -804,7 +847,7 @@ describe('NotificationsEditor.vue', () => {
     el.selectionEnd = 7;
 
     const chips = rows[1].findAll('[data-testid="template-chip"]');
-    const linkChip = chips.find(c => c.text().includes('CHIP_LINK'));
+    const linkChip = chips.find(c => c.text() === 'Link');
     await linkChip.trigger('click');
 
     const lastEvent = lastEmitted(wrapper);

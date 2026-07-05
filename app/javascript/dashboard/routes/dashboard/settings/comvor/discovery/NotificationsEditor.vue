@@ -24,6 +24,15 @@ function defaultTemplateForEvent(event) {
   return defaultTemplates.value[event] || '';
 }
 
+// Map from the same event key to its ordered chip list ([{key, label}]), as
+// provided by the API. Stage rows use their own `stage:<key>` entry (their
+// `event` field is already in that shape — see stageEventRows()).
+const placeholders = computed(() => props.notifications.placeholders || {});
+
+function placeholdersForEvent(event) {
+  return placeholders.value[event] || [];
+}
+
 const { t } = useI18n();
 
 // Telegram bot tokens are write-only: the backend masks a saved token as
@@ -53,11 +62,19 @@ const channels = reactive([]);
 // Stage rows additionally carry `isStage`, `flowKey`, and `guidance`.
 const routes = reactive([]);
 
+// "new_order" is an outcome event: its display label comes from the API's
+// `events` list (find by key) rather than frontend i18n. Falls back to the
+// event key itself if the API hasn't provided it (e.g. an older engine).
+function outcomeEventLabel(event) {
+  const found = (props.notifications.events || []).find(e => e.key === event);
+  return found ? found.label : event;
+}
+
 function fixedEventRows() {
   return [
     {
       event: 'new_order',
-      labelKey: 'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.EVENT_NEW_ORDER',
+      label: outcomeEventLabel('new_order'),
       isStage: false,
     },
     {
@@ -416,6 +433,10 @@ const allRows = computed(() => {
 function defaultTemplateFor(row) {
   return defaultTemplateForEvent(row.event);
 }
+
+function placeholdersFor(row) {
+  return placeholdersForEvent(row.event);
+}
 </script>
 
 <template>
@@ -644,6 +665,7 @@ function defaultTemplateFor(row) {
             v-if="row.route !== ROUTE_OFF"
             :row="row"
             :default-template="defaultTemplateFor(row)"
+            :placeholders="placeholdersFor(row)"
             @chip="insertChipToken(row.index, $event)"
             @template="onRouteTemplate(row.index, $event)"
             @start-from-default="startFromDefault(row.index, $event)"

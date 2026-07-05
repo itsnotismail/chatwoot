@@ -16,6 +16,35 @@ const DEFAULT_TEMPLATES = {
   'stage:order_drafting': 'default stage template {stage}',
 };
 
+// Mirrors the API's `placeholders` shape (see comvor-engine's
+// TestNotifications_GET_Placeholders_And_Events).
+const PLACEHOLDERS = {
+  new_order: [
+    { key: 'items', label: 'Items' },
+    { key: 'address', label: 'Address' },
+    { key: 'phone', label: 'Phone' },
+    { key: 'payment', label: 'Payment' },
+    { key: 'summary', label: 'Summary' },
+    { key: 'link', label: 'Link' },
+  ],
+  handoff: [
+    { key: 'reason', label: 'Reason' },
+    { key: 'link', label: 'Link' },
+  ],
+  resolved: [
+    { key: 'summary', label: 'Summary' },
+    { key: 'link', label: 'Link' },
+  ],
+  'stage:order_drafting': [
+    { key: 'stage', label: 'Stage' },
+    { key: 'summary', label: 'Summary' },
+    { key: 'link', label: 'Link' },
+  ],
+};
+
+// Mirrors the API's `events` list: outcome events only (new_order).
+const EVENTS = [{ key: 'new_order', label: 'New order' }];
+
 function flowConfigResponse() {
   return {
     ok: true,
@@ -60,6 +89,8 @@ function notificationsGetBody() {
     subscriptions: [],
     muted_events: [],
     default_templates: DEFAULT_TEMPLATES,
+    placeholders: PLACEHOLDERS,
+    events: EVENTS,
   };
 }
 
@@ -265,7 +296,7 @@ describe('NotificationsTab.vue', () => {
     expect(templateInput.element.value).toBe(DEFAULT_TEMPLATES.new_order);
 
     const chips = rows[0].findAll('[data-testid="template-chip"]');
-    const itemsChip = chips.find(c => c.text().includes('CHIP_ITEMS'));
+    const itemsChip = chips.find(c => c.text() === 'Items');
     await itemsChip.trigger('click');
     await wrapper.vm.$nextTick();
 
@@ -335,9 +366,9 @@ describe('NotificationsTab.vue', () => {
     // flow-config, so the routing table still renders them even though the
     // notifiable-stages fetch failed.
     expect(wrapper.vm.notifiableStages).toEqual([]);
-    expect(wrapper.text()).toContain(
-      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.EVENT_NEW_ORDER'
-    );
+    // This mock's /notifications GET body omits `events`, so new_order's
+    // label falls back to the event key itself.
+    expect(wrapper.text()).toContain('new_order');
     expect(wrapper.text()).toContain(
       'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.EVENT_HANDOFF'
     );

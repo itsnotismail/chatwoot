@@ -17,6 +17,46 @@ function mountEditor(row = {}, props = {}) {
 }
 
 describe('TemplateEditor.vue', () => {
+  // ── Data-driven chips (from the API's `placeholders`) ──
+  it('renders chips from the placeholders prop, in API order, with the API label verbatim (no i18n lookup)', () => {
+    const wrapper = mountEditor(
+      {},
+      {
+        placeholders: [
+          { key: 'items', label: 'Items' },
+          { key: 'address', label: 'Address' },
+          { key: 'phone', label: 'Phone' },
+          { key: 'payment', label: 'Payment' },
+          { key: 'summary', label: 'Summary' },
+          { key: 'link', label: 'Link' },
+        ],
+      }
+    );
+    const chips = wrapper.findAll('[data-testid="template-chip"]');
+    expect(chips.map(c => c.text())).toEqual([
+      'Items',
+      'Address',
+      'Phone',
+      'Payment',
+      'Summary',
+      'Link',
+    ]);
+  });
+
+  it('clicking a chip inserts {key} (built from the API key, not a hardcoded token map)', async () => {
+    const wrapper = mountEditor(
+      {},
+      { placeholders: [{ key: 'reason', label: 'Reason' }] }
+    );
+    await wrapper.find('[data-testid="template-chip"]').trigger('click');
+    expect(wrapper.emitted('chip')[0]).toEqual(['{reason}']);
+  });
+
+  it('renders no chips when placeholders is empty', () => {
+    const wrapper = mountEditor({}, { placeholders: [] });
+    expect(wrapper.findAll('[data-testid="template-chip"]')).toHaveLength(0);
+  });
+
   it('renders the live preview using generic sample data (not a real order)', () => {
     // PREVIEW_SAMPLE must read as an obviously-generic example, not real
     // customer data (a prior version hardcoded an actual test order:

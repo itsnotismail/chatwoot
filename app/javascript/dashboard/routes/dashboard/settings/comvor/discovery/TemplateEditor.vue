@@ -7,9 +7,13 @@ import { useI18n } from 'vue-i18n';
 // sourced from the API's `default_templates` map (threaded down through
 // NotificationsTab -> NotificationsEditor -> here). The field is always
 // pre-filled with this default when there is no saved custom template.
+// `placeholders` is this row's chip list ([{key, label}]), sourced from the
+// API's `placeholders` map (threaded down the same way, keyed by
+// `default_templates` — event key, or `stage:<key>` for stage rows).
 const props = defineProps({
   row: { type: Object, required: true },
   defaultTemplate: { type: String, default: '' },
+  placeholders: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['chip', 'template', 'startFromDefault', 'register']);
@@ -22,36 +26,9 @@ function defaultTemplateFor() {
   return props.defaultTemplate || '';
 }
 
-// Placeholder chip sets per event, as [i18n label key, token] pairs.
-const NEW_ORDER_CHIPS = [
-  ['CHIP_ITEMS', '{items}'],
-  ['CHIP_ADDRESS', '{address}'],
-  ['CHIP_PHONE', '{phone}'],
-  ['CHIP_PAYMENT', '{payment}'],
-  ['CHIP_SUMMARY', '{summary}'],
-  ['CHIP_LINK', '{link}'],
-];
-const HANDOFF_CHIPS = [
-  ['CHIP_REASON', '{reason}'],
-  ['CHIP_LINK', '{link}'],
-];
-const RESOLVED_CHIPS = [
-  ['CHIP_SUMMARY', '{summary}'],
-  ['CHIP_LINK', '{link}'],
-];
-const STAGE_CHIPS = [
-  ['CHIP_STAGE', '{stage}'],
-  ['CHIP_SUMMARY', '{summary}'],
-  ['CHIP_LINK', '{link}'],
-];
-
-const chips = computed(() => {
-  if (props.row.isStage) return STAGE_CHIPS;
-  if (props.row.event === 'new_order') return NEW_ORDER_CHIPS;
-  if (props.row.event === 'handoff') return HANDOFF_CHIPS;
-  if (props.row.event === 'resolved') return RESOLVED_CHIPS;
-  return [];
-});
+// Chip button label = the API-provided `label` directly (no i18n lookup);
+// the token inserted into the template is `{key}`.
+const chips = computed(() => props.placeholders || []);
 
 // Sample data used to render the live preview — mirrors the backend's
 // substitution semantics (render() in notifier.go): named placeholders with
@@ -158,14 +135,14 @@ defineExpose({ substitute, resizeToContent });
 
     <div class="flex flex-wrap items-center gap-1.5">
       <button
-        v-for="[labelKey, token] in chips"
-        :key="labelKey"
+        v-for="chip in chips"
+        :key="chip.key"
         type="button"
         data-testid="template-chip"
         class="rounded-full border border-n-weak bg-n-surface-1 px-2 py-0.5 text-xs text-n-slate-11 hover:bg-n-slate-3"
-        @click="onChipClick(token)"
+        @click="onChipClick(`{${chip.key}}`)"
       >
-        {{ t(`COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.${labelKey}`) }}
+        {{ chip.label }}
       </button>
     </div>
 

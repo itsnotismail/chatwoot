@@ -214,6 +214,38 @@ describe('SalesFlowEditor.vue', () => {
     });
   });
 
+  // The dejargoned automatic-mode wall message (comvor-engine's
+  // flowcfg.ValidatePublish, "action wall" branch) reuses the "Who completes
+  // this step" select's exact option labels instead of the old internal
+  // terms "Automatic mode"/"Confirm-only" (which matched no UI copy). This
+  // is a passthrough render (the message string itself is API-provided,
+  // like the other wall messages above) — the test pins the integration
+  // point and confirms the em dash and quoted labels render intact.
+  it('renders the dejargoned automatic-mode wall message verbatim, matching the "Who completes this step" select labels', () => {
+    const walls = [
+      {
+        flow_key: 'sales',
+        stage_key: 'order_drafting',
+        capability: 'order.draft',
+        kind: 'hard',
+        message:
+          '"Bot completes it" needs a connected system providing order.draft. Choose "Bot prepares, your team completes" instead — or connect one under Connectors.',
+      },
+    ];
+    const wrapper = mountEditor({ walls });
+    const card = wrapper.findAll('[data-testid="stage-card"]')[1];
+    const whoCompletesOptions = card
+      .findAll('[data-testid="who-completes-select"] option')
+      .map(o => o.text());
+    expect(whoCompletesOptions).toEqual([
+      'COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.WHO_COMPLETES_AUTO',
+      'COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.WHO_COMPLETES_DEFERRED',
+    ]);
+    expect(card.text()).toContain(
+      '"Bot completes it" needs a connected system providing order.draft. Choose "Bot prepares, your team completes" instead — or connect one under Connectors.'
+    );
+  });
+
   it('guidance textarea is hidden behind an Adjust expander and emits guidance on change', async () => {
     const wrapper = mountEditor();
     const card = wrapper.findAll('[data-testid="stage-card"]')[0];
