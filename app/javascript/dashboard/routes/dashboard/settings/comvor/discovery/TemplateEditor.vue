@@ -60,7 +60,8 @@ const chips = computed(() => {
 // Values here are deliberately generic placeholders (not a real order) so the
 // preview clearly reads as a sample, not live customer data.
 const PREVIEW_SAMPLE = {
-  items: '• Sample product ×1 — MVR 100\n• Another item ×2 — MVR 250',
+  items:
+    '• Sample product ×1 — MVR 100 (SKU 01234)\n• Another item ×2 — MVR 250 (SKU 05678)',
   address: '123 Example Road, Malé',
   phone: '7XXXXXX',
   payment: 'Bank transfer',
