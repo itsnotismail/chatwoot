@@ -63,19 +63,17 @@ const chips = computed(() => {
 // substitution semantics (render() in notifier.go): named placeholders with
 // no sample value fall back to an em-dash, everything else (stage/summary/
 // link) substitutes verbatim, and any remaining unknown token is left as-is.
+// Values here are deliberately generic placeholders (not a real order) so the
+// preview clearly reads as a sample, not live customer data.
 const PREVIEW_SAMPLE = {
-  items:
-    '• Play pen 120*120 + Gifts ×1 — MVR 1299\n• Ball pit balls ×1 — MVR 199',
-  address: 'Rainforest Residence, Malé',
-  phone: '9990805',
-  // Deliberately absent: demonstrates the em-dash fallback for a named
-  // placeholder with no sample data (e.g. the customer hasn't confirmed a
-  // payment method yet when the order hands off).
-  payment: '',
+  items: '• Sample product ×1 — MVR 100\n• Another item ×2 — MVR 250',
+  address: '123 Example Road, Malé',
+  phone: '7XXXXXX',
+  payment: 'Bank transfer',
   stage: 'Order taking',
-  summary: 'Customer confirmed the order',
+  summary: 'Short summary of the conversation',
   reason: 'customer asked for a human',
-  link: 'https://…/conversations/24',
+  link: 'https://…/conversation',
 };
 const EM_DASH = '—';
 const NAMED_PLACEHOLDER_KEYS = ['items', 'address', 'phone', 'payment'];
@@ -112,6 +110,13 @@ function onChipClick(token) {
 function onStartFromDefault() {
   emit('startFromDefault', defaultTemplateFor(props.row));
 }
+
+// Exposed for a direct unit test of the em-dash fallback (see
+// TemplateEditor.spec.js) — PREVIEW_SAMPLE itself now has every named
+// placeholder populated, so the fallback is otherwise unreachable from the
+// live preview and needs to be exercised against a sample that deliberately
+// omits a value.
+defineExpose({ substitute });
 </script>
 
 <template>

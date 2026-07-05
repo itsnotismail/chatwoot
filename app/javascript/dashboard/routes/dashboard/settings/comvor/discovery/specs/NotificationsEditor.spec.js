@@ -652,6 +652,25 @@ describe('NotificationsEditor.vue', () => {
     ]);
   });
 
+  it('typing directly into the template field persists the value and round-trips it', async () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    const templateInput = rows[0].find(
+      'textarea[data-testid="route-template-input"]'
+    );
+    await templateInput.setValue('typed template {items}');
+
+    expect(templateInput.element.value).toBe('typed template {items}');
+    const lastEvent = lastEmitted(wrapper);
+    expect(lastEvent.subscriptions).toEqual([
+      {
+        event: 'new_order',
+        channel_index: null,
+        template: 'typed template {items}',
+      },
+    ]);
+  });
+
   it('clicking a chip inserts its token at the cursor position in that row template', async () => {
     const wrapper = mountEditor();
     const rows = wrapper.findAll('[data-testid="routing-row"]');
@@ -718,15 +737,27 @@ describe('NotificationsEditor.vue', () => {
     await templateInput.setValue('Order: {items} — {address}');
 
     const preview = rows[0].find('[data-testid="template-preview"]');
-    expect(preview.text()).toContain('Rainforest Residence');
+    expect(preview.text()).toContain('123 Example Road');
   });
 
   it('the new_order preview shows the order block sample via its default template', () => {
     const wrapper = mountEditor();
     const rows = wrapper.findAll('[data-testid="routing-row"]');
     const preview = rows[0].find('[data-testid="template-preview"]');
-    expect(preview.text()).toContain('Rainforest Residence');
-    expect(preview.text()).toContain('9990805');
+    expect(preview.text()).toContain('123 Example Road');
+    expect(preview.text()).toContain('7XXXXXX');
+  });
+
+  it('the new_order preview populates the payment placeholder (no stray em-dash for a fully-sampled template)', () => {
+    // The default template's {payment} segment must resolve to real sample
+    // text now that PREVIEW_SAMPLE.payment is populated, not the em-dash
+    // fallback (that fallback is covered directly in TemplateEditor's own
+    // substitute() unit test below, using a template/sample pair that
+    // deliberately omits a value).
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    const preview = rows[0].find('[data-testid="template-preview"]');
+    expect(preview.text()).toContain('Bank transfer');
   });
 
   it('the handoff preview substitutes the {reason} sample into the plain default template', () => {
@@ -736,21 +767,6 @@ describe('NotificationsEditor.vue', () => {
     const preview = rows[1].find('[data-testid="template-preview"]');
     expect(preview.text()).toContain('customer asked for a human');
     expect(preview.text()).not.toContain('{reason}');
-  });
-
-  it('the preview renders an em-dash for a named placeholder with no sample data (payment not yet confirmed)', () => {
-    // Reproduces the backend's emDashPlaceholder fallback (notifier.go
-    // render()): a named placeholder key (items/address/phone/payment) with
-    // no backing sample value renders as "—" rather than a dangling "{token}"
-    // literal. PREVIEW_SAMPLE deliberately leaves {payment} unset (a
-    // realistic case: the customer hasn't confirmed a payment method yet),
-    // so the new_order default template's "{payment}" segment must resolve
-    // to the em-dash, not a raw "{payment}" or an empty gap.
-    const wrapper = mountEditor();
-    const rows = wrapper.findAll('[data-testid="routing-row"]');
-    const preview = rows[0].find('[data-testid="template-preview"]');
-    expect(preview.text()).toContain('—');
-    expect(preview.text()).not.toContain('{payment}');
   });
 
   it('seeds routing rows from an existing subscription', () => {

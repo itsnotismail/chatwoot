@@ -95,12 +95,23 @@ function seedRoutes(notifications, channelList) {
   const idToIndex = new Map(
     (channelList || []).map((c, index) => [c.id, index])
   );
-  // A subscription's channel_id is either a real channel id (routes to that
-  // channel), or null (routes to the default channel, carrying a template).
-  // Only drop a subscription if it names a channel id that no longer exists.
+  // A subscription comes in one of two shapes: `channel_id` (the backend's
+  // GET/PUT-response shape — a real persisted channel id, or null for the
+  // default channel), or `channel_index` (the shape this component itself
+  // emits — a position into the *local* channels array, only meaningful
+  // pre-save). Both must resolve here: `emitUpdate()`'s payload gets merged
+  // straight back into `notifications` by the parent and re-seeded through
+  // this same deep watcher (e.g. after a chip click), so a `channel_index`
+  // subscription has to round-trip locally, not just a `channel_id` one.
+  function hasChannelRef(s) {
+    return 'channel_id' in s
+      ? s.channel_id === null || idToIndex.has(s.channel_id)
+      : s.channel_index === null ||
+          (s.channel_index >= 0 && s.channel_index < channelList.length);
+  }
   const subsByEvent = new Map(
     (notifications.subscriptions || [])
-      .filter(s => s.channel_id === null || idToIndex.has(s.channel_id))
+      .filter(hasChannelRef)
       .map(s => [s.event, s])
   );
   const mutedEvents = new Set(notifications.muted_events || []);
@@ -111,9 +122,12 @@ function seedRoutes(notifications, channelList) {
   );
 
   function routeForSub(sub) {
-    return sub.channel_id === null
-      ? ROUTE_DEFAULT
-      : idToIndex.get(sub.channel_id);
+    if ('channel_id' in sub) {
+      return sub.channel_id === null
+        ? ROUTE_DEFAULT
+        : idToIndex.get(sub.channel_id);
+    }
+    return sub.channel_index === null ? ROUTE_DEFAULT : sub.channel_index;
   }
 
   routes.splice(

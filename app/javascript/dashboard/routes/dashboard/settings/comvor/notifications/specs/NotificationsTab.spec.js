@@ -224,6 +224,45 @@ describe('NotificationsTab.vue', () => {
     expect(wrapper.vm.notificationsDirty).toBe(false);
   });
 
+  it('clicking a placeholder chip on a Default-routed row inserts the token instead of resetting the template field', async () => {
+    // Regression: NotificationsTab.onNotificationsUpdate replaces
+    // `notifications.value` with a brand-new object on every
+    // update:notifications emit. NotificationsEditor's seedRoutes runs off a
+    // deep watcher on that prop, so a chip click (which itself calls
+    // emitUpdate()) triggers a re-seed of every route row via this parent
+    // round-trip. If the inserted token isn't preserved across that re-seed,
+    // the click appears to clear the field — this only reproduces through
+    // the real parent/child prop cycle, not against an isolated
+    // NotificationsEditor mount with a stable prop reference.
+    const wrapper = mount(NotificationsTab, {
+      props: { accountId: '7', engineUrl: 'http://engine' },
+      global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
+    });
+    await flushPromises();
+
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    // First row is `new_order`, seeded to Default with an empty template.
+    const templateInput = rows[0].find(
+      'textarea[data-testid="route-template-input"]'
+    );
+    expect(templateInput.element.value).toBe('');
+
+    const chips = rows[0].findAll('[data-testid="template-chip"]');
+    const itemsChip = chips.find(c => c.text().includes('CHIP_ITEMS'));
+    await itemsChip.trigger('click');
+    await wrapper.vm.$nextTick();
+
+    const updatedRows = wrapper.findAll('[data-testid="routing-row"]');
+    const updatedTemplateInput = updatedRows[0].find(
+      'textarea[data-testid="route-template-input"]'
+    );
+    expect(updatedTemplateInput.element.value).toBe('{items}');
+
+    expect(wrapper.vm.notifications.subscriptions).toEqual([
+      { event: 'new_order', channel_index: null, template: '{items}' },
+    ]);
+  });
+
   it('still renders the new_order/handoff/resolved routing rows when the flow-config fetch fails', async () => {
     global.fetch = vi.fn((url, opts) => {
       if (url.endsWith('/flow-config')) {
