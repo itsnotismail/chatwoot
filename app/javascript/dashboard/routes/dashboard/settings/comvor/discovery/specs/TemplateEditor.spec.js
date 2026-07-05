@@ -3,10 +3,15 @@ import TemplateEditor from '../TemplateEditor.vue';
 
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: k => k }) }));
 
-function mountEditor(row = {}) {
+const NEW_ORDER_DEFAULT =
+  '🛎️ New order — please finalize with the customer\n{items}\n📍 {address}\n📞 {phone} · 💳 {payment}\n→ {link}';
+
+function mountEditor(row = {}, props = {}) {
   return mount(TemplateEditor, {
     props: {
       row: { event: 'new_order', isStage: false, template: '', ...row },
+      defaultTemplate: NEW_ORDER_DEFAULT,
+      ...props,
     },
   });
 }
@@ -29,6 +34,106 @@ describe('TemplateEditor.vue', () => {
     const wrapper = mountEditor();
     const preview = wrapper.find('[data-testid="template-preview"]');
     expect(preview.text()).toContain('Bank transfer');
+  });
+
+  // ── Pre-fill from the defaultTemplate prop (no local DEFAULT_TEMPLATES mirror) ──
+  it('pre-fills the field with the defaultTemplate prop when row.template is empty', () => {
+    const wrapper = mountEditor({ template: '' });
+    const input = wrapper.find('[data-testid="route-template-input"]');
+    // The rendered value follows `row.template` (owned by the parent), but
+    // the live preview must fall back to the prop-provided default so the
+    // field always reads as non-blank content.
+    expect(input.element.value).toBe('');
+    const preview = wrapper.find('[data-testid="template-preview"]');
+    expect(preview.text()).toContain('123 Example Road');
+  });
+
+  it('uses the defaultTemplate prop (not a hardcoded mirror) for a plain event like handoff', () => {
+    const wrapper = mountEditor(
+      { event: 'handoff', template: '' },
+      { defaultTemplate: '👤 Conversation needs a human ({reason}) → {link}' }
+    );
+    const preview = wrapper.find('[data-testid="template-preview"]');
+    expect(preview.text()).toContain('customer asked for a human');
+  });
+
+  // ── Reset to default ──
+  it('"Reset to default" emits startFromDefault with the defaultTemplate prop value', async () => {
+    const wrapper = mountEditor({ template: 'something customized' });
+    await wrapper
+      .find('[data-testid="template-start-from-default"]')
+      .trigger('click');
+
+    expect(wrapper.emitted('startFromDefault')[0]).toEqual([NEW_ORDER_DEFAULT]);
+  });
+
+  it('renders the "Reset to default" label (renamed from "Start from default")', () => {
+    const wrapper = mountEditor();
+    expect(wrapper.text()).toContain(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.RESET_TO_DEFAULT'
+    );
+  });
+
+  // ── Auto-height ──
+  it('exposes resizeToContent, which sets the textarea height from its scrollHeight', () => {
+    const wrapper = mountEditor();
+    const textarea = wrapper.find(
+      '[data-testid="route-template-input"]'
+    ).element;
+    Object.defineProperty(textarea, 'scrollHeight', {
+      configurable: true,
+      value: 150,
+    });
+
+    wrapper.vm.resizeToContent();
+
+    expect(textarea.style.height).toBe('150px');
+  });
+
+  it('clamps the auto-height to a sane minimum (~3 rows)', () => {
+    const wrapper = mountEditor();
+    const textarea = wrapper.find(
+      '[data-testid="route-template-input"]'
+    ).element;
+    Object.defineProperty(textarea, 'scrollHeight', {
+      configurable: true,
+      value: 10,
+    });
+
+    wrapper.vm.resizeToContent();
+
+    expect(parseInt(textarea.style.height, 10)).toBeGreaterThanOrEqual(72);
+  });
+
+  it('clamps the auto-height to a sane maximum (~12 rows) and scrolls beyond that', () => {
+    const wrapper = mountEditor();
+    const textarea = wrapper.find(
+      '[data-testid="route-template-input"]'
+    ).element;
+    Object.defineProperty(textarea, 'scrollHeight', {
+      configurable: true,
+      value: 1000,
+    });
+
+    wrapper.vm.resizeToContent();
+
+    expect(parseInt(textarea.style.height, 10)).toBeLessThanOrEqual(288);
+    expect(textarea.style.overflowY).toBe('auto');
+  });
+
+  it('resizes on input', async () => {
+    const wrapper = mountEditor();
+    const textarea = wrapper.find(
+      '[data-testid="route-template-input"]'
+    ).element;
+    Object.defineProperty(textarea, 'scrollHeight', {
+      configurable: true,
+      value: 200,
+    });
+
+    await wrapper.find('[data-testid="route-template-input"]').trigger('input');
+
+    expect(textarea.style.height).toBe('200px');
   });
 
   // ── substitute() em-dash fallback, tested directly ──

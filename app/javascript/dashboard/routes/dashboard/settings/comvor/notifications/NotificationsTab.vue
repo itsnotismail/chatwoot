@@ -74,6 +74,7 @@ function extractNotifiableStages(flowConfig) {
       flow_key: s.flow_key,
       notify_enabled: s.notify_enabled,
       notify_guidance: s.notify_guidance,
+      on_complete: s.on_complete,
     }));
 }
 

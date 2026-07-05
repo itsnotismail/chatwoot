@@ -1,10 +1,15 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 // `row` is a routing row from NotificationsEditor: { event, isStage, template, ... }.
+// `defaultTemplate` is this row's event's built-in default template string,
+// sourced from the API's `default_templates` map (threaded down through
+// NotificationsTab -> NotificationsEditor -> here). The field is always
+// pre-filled with this default when there is no saved custom template.
 const props = defineProps({
   row: { type: Object, required: true },
+  defaultTemplate: { type: String, default: '' },
 });
 
 const emit = defineEmits(['chip', 'template', 'startFromDefault', 'register']);
@@ -13,19 +18,8 @@ const { t } = useI18n();
 
 const TEMPLATE_MAX = 1000;
 
-// Default templates: mirror of comvor-engine internal/notify/notifier.go
-// defaultTemplateFor — keep in sync.
-const DEFAULT_TEMPLATES = {
-  new_order:
-    '🛎️ New order — please finalize with the customer\n{items}\n📍 {address}\n📞 {phone} · 💳 {payment}\n→ {link}',
-  handoff: '👤 Conversation needs a human ({reason}) → {link}',
-  resolved: '✅ Conversation resolved → {link}',
-  stage: '📦 {stage} completed — {summary} → {link}',
-};
-
-function defaultTemplateFor(row) {
-  if (row.isStage) return DEFAULT_TEMPLATES.stage;
-  return DEFAULT_TEMPLATES[row.event] || '';
+function defaultTemplateFor() {
+  return props.defaultTemplate || '';
 }
 
 // Placeholder chip sets per event, as [i18n label key, token] pairs.
@@ -96,7 +90,7 @@ function substitute(template, sample) {
 }
 
 const effectiveTemplate = computed(
-  () => props.row.template || defaultTemplateFor(props.row)
+  () => props.row.template || defaultTemplateFor()
 );
 
 const preview = computed(() =>
@@ -107,29 +101,58 @@ function onChipClick(token) {
   emit('chip', token);
 }
 
-function onStartFromDefault() {
-  emit('startFromDefault', defaultTemplateFor(props.row));
+// Auto-height: the textarea grows with its content (no scrolling) between a
+// sane minimum (~3 rows) and maximum (~12 rows), then scrolls beyond that.
+const textareaEl = ref(null);
+const MIN_HEIGHT = 72; // ~3 rows
+const MAX_HEIGHT = 288; // ~12 rows
+
+function resizeToContent() {
+  const el = textareaEl.value;
+  if (!el) return;
+  el.style.height = 'auto';
+  const next = Math.min(Math.max(el.scrollHeight, MIN_HEIGHT), MAX_HEIGHT);
+  el.style.height = `${next}px`;
+  el.style.overflowY = el.scrollHeight > MAX_HEIGHT ? 'auto' : 'hidden';
 }
+
+function onStartFromDefault() {
+  emit('startFromDefault', defaultTemplateFor());
+  nextTick(resizeToContent);
+}
+
+function registerTextarea(el) {
+  textareaEl.value = el;
+  emit('register', el);
+}
+
+function onInput(event) {
+  emit('template', event.target.value);
+  resizeToContent();
+}
+
+onMounted(resizeToContent);
 
 // Exposed for a direct unit test of the em-dash fallback (see
 // TemplateEditor.spec.js) — PREVIEW_SAMPLE itself now has every named
 // placeholder populated, so the fallback is otherwise unreachable from the
 // live preview and needs to be exercised against a sample that deliberately
-// omits a value.
-defineExpose({ substitute });
+// omits a value. `resizeToContent` is exposed so a unit test can assert the
+// height calc directly.
+defineExpose({ substitute, resizeToContent });
 </script>
 
 <template>
   <div class="flex flex-col gap-1.5">
     <textarea
-      :ref="el => emit('register', el)"
+      :ref="el => registerTextarea(el)"
       data-testid="route-template-input"
       rows="3"
       :value="row.template"
       :maxlength="TEMPLATE_MAX"
       :placeholder="t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.TEMPLATE_LABEL')"
-      class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-      @change="emit('template', $event.target.value)"
+      class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand resize-none"
+      @input="onInput"
     />
 
     <div class="flex flex-wrap items-center gap-1.5">
@@ -155,7 +178,7 @@ defineExpose({ substitute });
         class="shrink-0 text-xs text-n-brand"
         @click="onStartFromDefault"
       >
-        {{ t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.START_FROM_DEFAULT') }}
+        {{ t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.RESET_TO_DEFAULT') }}
       </button>
     </div>
 

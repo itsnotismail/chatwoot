@@ -17,6 +17,10 @@ vi.mock('vue-i18n', () => ({
 
 const MASK = '********';
 
+// `on_complete: 'continue'` keeps these stage rows visible in the routing
+// table — a stage that HANDS OVER on completion (on_complete !== 'continue')
+// is redundant with the new_order/handoff conversation events and its row is
+// suppressed (see the dedicated suppression tests below).
 const notifiableStages = [
   {
     stage_key: 'order_drafting',
@@ -24,6 +28,7 @@ const notifiableStages = [
     flow_key: 'sales',
     notify_enabled: false,
     notify_guidance: '',
+    on_complete: 'continue',
   },
   {
     stage_key: 'payment_fulfillment',
@@ -31,8 +36,18 @@ const notifiableStages = [
     flow_key: 'sales',
     notify_enabled: true,
     notify_guidance: '',
+    on_complete: 'continue',
   },
 ];
+
+const DEFAULT_TEMPLATES = {
+  new_order:
+    '🛎️ New order — please finalize with the customer\n{items}\n📍 {address}\n📞 {phone} · 💳 {payment}\n→ {link}',
+  handoff: '👤 Conversation needs a human ({reason}) → {link}',
+  resolved: '✅ Conversation resolved → {link}',
+  'stage:order_drafting': '📦 Order taking completed — {summary} → {link}',
+  'stage:payment_fulfillment': '📦 Payment completed — {summary} → {link}',
+};
 
 function baseNotifications(overrides = {}) {
   return {
@@ -47,6 +62,7 @@ function baseNotifications(overrides = {}) {
     ],
     subscriptions: [],
     muted_events: [],
+    default_templates: DEFAULT_TEMPLATES,
     ...overrides,
   };
 }
@@ -262,6 +278,32 @@ describe('NotificationsEditor.vue', () => {
     );
   });
 
+  it('aligns the bot-token and chat-id fields: same input height class and a top-aligned grid', () => {
+    const wrapper = mountEditor();
+    const tokenInput = wrapper.find('[data-testid="channel-bot-token-input"]');
+    const chatIdInput = wrapper.find('[data-testid="channel-chat-id-input"]');
+
+    expect(tokenInput.classes()).toContain('h-9');
+    expect(chatIdInput.classes()).toContain('h-9');
+
+    // Grid stretches items from the top so two differently-tall labels
+    // (Chat ID's label carries an inline InfoHint, Bot token's doesn't)
+    // don't push the inputs out of baseline with each other.
+    const grid = wrapper.find('.grid.grid-cols-1.sm\\:grid-cols-2');
+    expect(grid.classes()).toContain('items-start');
+
+    // Both label rows share the same fixed height/line-height so the two
+    // inputs start at the same vertical offset regardless of label content.
+    const tokenLabelSpan = wrapper.find(
+      '[data-testid="channel-bot-token-input"]'
+    ).element.previousElementSibling;
+    const chatIdLabelSpan = wrapper.find(
+      '[data-testid="channel-chat-id-input"]'
+    ).element.previousElementSibling;
+    expect(tokenLabelSpan.className).toContain('h-4');
+    expect(chatIdLabelSpan.className).toContain('h-4');
+  });
+
   it('shows a hint when no channel is marked default', () => {
     const wrapper = mountEditor({
       notifications: baseNotifications({
@@ -300,17 +342,55 @@ describe('NotificationsEditor.vue', () => {
     expect(wrapper.text()).toContain('Payment completed');
   });
 
-  it('renders the two group subheaders and no per-row "Channel" label', () => {
+  it('renders one flat list with no group subheaders and no per-row "Channel" label', () => {
     const wrapper = mountEditor();
-    expect(wrapper.text()).toContain(
+    expect(wrapper.text()).not.toContain(
       'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.GROUP_CONVERSATION'
     );
-    expect(wrapper.text()).toContain(
+    expect(wrapper.text()).not.toContain(
       'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.GROUP_STAGE'
     );
     expect(wrapper.find('[data-testid="route-channel-label"]').exists()).toBe(
       false
     );
+  });
+
+  it('suppresses a stage-completion row whose stage hands over on completion (on_complete !== continue)', () => {
+    const wrapper = mountEditor({
+      notifiableStages: [
+        {
+          stage_key: 'order_drafting',
+          display_name: 'Order taking',
+          flow_key: 'sales',
+          notify_enabled: true,
+          notify_guidance: '',
+          on_complete: 'handoff',
+        },
+      ],
+    });
+    // Only the three fixed conversation events remain -- the handoff-terminal
+    // stage row is redundant with new_order/handoff and is not rendered.
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    expect(rows).toHaveLength(3);
+    expect(wrapper.text()).not.toContain('Order taking completed');
+  });
+
+  it('renders a stage-completion row for a stage that continues (on_complete === continue)', () => {
+    const wrapper = mountEditor({
+      notifiableStages: [
+        {
+          stage_key: 'order_drafting',
+          display_name: 'Order taking',
+          flow_key: 'sales',
+          notify_enabled: true,
+          notify_guidance: '',
+          on_complete: 'continue',
+        },
+      ],
+    });
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    expect(rows).toHaveLength(4);
+    expect(wrapper.text()).toContain('Order taking completed');
   });
 
   it('a fixed event (new_order/handoff/resolved) with no subscription and not muted defaults to the Default option', () => {
@@ -531,10 +611,12 @@ describe('NotificationsEditor.vue', () => {
     ]);
   });
 
-  it('a Default route with a blank template emits no subscription', async () => {
+  it('a Default route left at its (pre-filled) default template emits no subscription', async () => {
     const wrapper = mountEditor();
     // Trigger an emit by touching an unrelated field (chat ID), then confirm
-    // the still-blank new_order row (Default route) has no subscription.
+    // the untouched new_order row (Default route, pre-filled with its
+    // default template) still has no subscription -- so the backend keeps
+    // applying its own default and future default changes propagate.
     const chatIdInput = wrapper.find(
       'input[data-testid="channel-chat-id-input"]'
     );
@@ -544,6 +626,44 @@ describe('NotificationsEditor.vue', () => {
     expect(lastEvent.subscriptions.some(s => s.event === 'new_order')).toBe(
       false
     );
+  });
+
+  it('a channel-routed row left at its default template persists with an empty template override', async () => {
+    const wrapper = mountEditor();
+    const selects = wrapper.findAll(
+      'select[data-testid="route-channel-select"]'
+    );
+    // First row is `new_order`; route it to a specific channel without
+    // touching the (pre-filled, default) template.
+    await selects[0].setValue('0');
+
+    const lastEvent = lastEmitted(wrapper);
+    expect(lastEvent.subscriptions).toEqual([
+      { event: 'new_order', channel_index: 0, template: '' },
+    ]);
+  });
+
+  it('a channel-routed row whose template differs from the default persists that template', async () => {
+    const wrapper = mountEditor();
+    const selects = wrapper.findAll(
+      'select[data-testid="route-channel-select"]'
+    );
+    await selects[0].setValue('0');
+
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    const templateInput = rows[0].find(
+      'textarea[data-testid="route-template-input"]'
+    );
+    await templateInput.setValue('custom channel template');
+
+    const lastEvent = lastEmitted(wrapper);
+    expect(lastEvent.subscriptions).toEqual([
+      {
+        event: 'new_order',
+        channel_index: 0,
+        template: 'custom channel template',
+      },
+    ]);
   });
 
   it('selecting Off for new_order PUTs it into muted_events with no subscription', async () => {
@@ -692,15 +812,37 @@ describe('NotificationsEditor.vue', () => {
     expect(sub.template).toBe('before {link} after');
   });
 
-  // ── Start from default ──
-  it('"Start from default" fills the new_order field with the order-layout default template', async () => {
+  // ── Pre-fill from API default_templates ──
+  it('the new_order field is pre-filled with default_templates.new_order when there is no saved template', () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    const templateInput = rows[0].find(
+      'textarea[data-testid="route-template-input"]'
+    );
+    expect(templateInput.element.value).toBe(DEFAULT_TEMPLATES.new_order);
+  });
+
+  it('the field is never blank -- a stage row with no saved template is pre-filled with its default_templates entry', () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    // Fifth row is payment_fulfillment (Default, no saved template).
+    const templateInput = rows[4].find(
+      'textarea[data-testid="route-template-input"]'
+    );
+    expect(templateInput.element.value).toBe(
+      DEFAULT_TEMPLATES['stage:payment_fulfillment']
+    );
+  });
+
+  // ── Reset to default ──
+  it('"Reset to default" fills the new_order field with the order-layout default template', async () => {
     const wrapper = mountEditor();
     const rows = wrapper.findAll('[data-testid="routing-row"]');
     // First row is `new_order`.
-    const startFromDefaultBtn = rows[0].find(
+    const resetBtn = rows[0].find(
       '[data-testid="template-start-from-default"]'
     );
-    await startFromDefaultBtn.trigger('click');
+    await resetBtn.trigger('click');
 
     const templateInput = rows[0].find(
       'textarea[data-testid="route-template-input"]'
@@ -710,18 +852,21 @@ describe('NotificationsEditor.vue', () => {
     );
   });
 
-  it('"Start from default" fills the handoff field with the plain default template (not the order layout)', async () => {
+  it('"Reset to default" restores the handoff field to its plain default template after it was customized', async () => {
     const wrapper = mountEditor();
     const rows = wrapper.findAll('[data-testid="routing-row"]');
     // Second row is `handoff`.
-    const startFromDefaultBtn = rows[1].find(
-      '[data-testid="template-start-from-default"]'
-    );
-    await startFromDefaultBtn.trigger('click');
-
     const templateInput = rows[1].find(
       'textarea[data-testid="route-template-input"]'
     );
+    await templateInput.setValue('a customized handoff message');
+    expect(templateInput.element.value).toBe('a customized handoff message');
+
+    const resetBtn = rows[1].find(
+      '[data-testid="template-start-from-default"]'
+    );
+    await resetBtn.trigger('click');
+
     expect(templateInput.element.value).toBe(
       '👤 Conversation needs a human ({reason}) → {link}'
     );

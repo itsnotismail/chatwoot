@@ -9,6 +9,13 @@ vi.mock('vuex', () => ({
 }));
 vi.mock('dashboard/composables', () => ({ useAlert: vi.fn() }));
 
+const DEFAULT_TEMPLATES = {
+  new_order: 'default new order template {items}',
+  handoff: 'default handoff template {reason}',
+  resolved: 'default resolved template',
+  'stage:order_drafting': 'default stage template {stage}',
+};
+
 function flowConfigResponse() {
   return {
     ok: true,
@@ -26,6 +33,10 @@ function flowConfigResponse() {
                 notifiable: true,
                 notify_enabled: true,
                 notify_guidance: '',
+                // `continue` -- this stage does NOT hand over on completion,
+                // so its row is not redundant with new_order/handoff and
+                // still renders.
+                on_complete: 'continue',
               },
               {
                 stage_key: 'discovery',
@@ -33,12 +44,22 @@ function flowConfigResponse() {
                 notifiable: false,
                 notify_enabled: false,
                 notify_guidance: '',
+                on_complete: 'continue',
               },
             ],
           },
         ],
       }),
     text: () => Promise.resolve(''),
+  };
+}
+
+function notificationsGetBody() {
+  return {
+    channels: [],
+    subscriptions: [],
+    muted_events: [],
+    default_templates: DEFAULT_TEMPLATES,
   };
 }
 
@@ -49,12 +70,7 @@ function mockFetch({ putResponse, flowConfigPutResponse } = {}) {
       return Promise.resolve({
         ok: true,
         status: 200,
-        json: () =>
-          Promise.resolve({
-            channels: [],
-            subscriptions: [],
-            muted_events: [],
-          }),
+        json: () => Promise.resolve(notificationsGetBody()),
         text: () => Promise.resolve(''),
       });
     }
@@ -68,8 +84,7 @@ function mockFetch({ putResponse, flowConfigPutResponse } = {}) {
     return Promise.resolve({
       ok: true,
       status: 200,
-      json: () =>
-        Promise.resolve({ channels: [], subscriptions: [], muted_events: [] }),
+      json: () => Promise.resolve(notificationsGetBody()),
       text: () => Promise.resolve(''),
     });
   });
@@ -94,7 +109,7 @@ describe('NotificationsTab.vue', () => {
     );
   });
 
-  it('fetches flow-config and derives notifiable stages (with notify fields + flow_key) for the routing table', async () => {
+  it('fetches flow-config and derives notifiable stages (with notify fields + flow_key + on_complete) for the routing table', async () => {
     const wrapper = mount(NotificationsTab, {
       props: { accountId: '7', engineUrl: 'http://engine' },
       global: { stubs: { 'woot-button': true, 'fluent-icon': true } },
@@ -113,6 +128,7 @@ describe('NotificationsTab.vue', () => {
         flow_key: 'sales',
         notify_enabled: true,
         notify_guidance: '',
+        on_complete: 'continue',
       },
     ]);
     // flow-config is not PUT from this tab unless there are pending
@@ -241,11 +257,12 @@ describe('NotificationsTab.vue', () => {
     await flushPromises();
 
     const rows = wrapper.findAll('[data-testid="routing-row"]');
-    // First row is `new_order`, seeded to Default with an empty template.
+    // First row is `new_order`, seeded to Default and pre-filled with its
+    // API-provided default template (never blank).
     const templateInput = rows[0].find(
       'textarea[data-testid="route-template-input"]'
     );
-    expect(templateInput.element.value).toBe('');
+    expect(templateInput.element.value).toBe(DEFAULT_TEMPLATES.new_order);
 
     const chips = rows[0].findAll('[data-testid="template-chip"]');
     const itemsChip = chips.find(c => c.text().includes('CHIP_ITEMS'));
@@ -256,10 +273,19 @@ describe('NotificationsTab.vue', () => {
     const updatedTemplateInput = updatedRows[0].find(
       'textarea[data-testid="route-template-input"]'
     );
-    expect(updatedTemplateInput.element.value).toBe('{items}');
+    // The click appends the token to the pre-filled default (cursor position
+    // defaults to end-of-text with no real selection in jsdom) rather than
+    // clearing the field.
+    expect(updatedTemplateInput.element.value).toBe(
+      `${DEFAULT_TEMPLATES.new_order}{items}`
+    );
 
     expect(wrapper.vm.notifications.subscriptions).toEqual([
-      { event: 'new_order', channel_index: null, template: '{items}' },
+      {
+        event: 'new_order',
+        channel_index: null,
+        template: `${DEFAULT_TEMPLATES.new_order}{items}`,
+      },
     ]);
   });
 
