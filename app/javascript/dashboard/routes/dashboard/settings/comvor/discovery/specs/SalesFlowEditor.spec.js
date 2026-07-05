@@ -229,7 +229,7 @@ describe('SalesFlowEditor.vue', () => {
         capability: 'order.draft',
         kind: 'hard',
         message:
-          '"Bot completes it" needs a connected system providing order.draft. Choose "Bot prepares, your team completes" instead — or connect one under Connectors.',
+          '"Bot completes it" needs a connected system that can create orders. Choose "Bot prepares, your team completes" instead — or connect one under Connectors.',
       },
     ];
     const wrapper = mountEditor({ walls });
@@ -242,7 +242,7 @@ describe('SalesFlowEditor.vue', () => {
       'COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.WHO_COMPLETES_DEFERRED',
     ]);
     expect(card.text()).toContain(
-      '"Bot completes it" needs a connected system providing order.draft. Choose "Bot prepares, your team completes" instead — or connect one under Connectors.'
+      '"Bot completes it" needs a connected system that can create orders. Choose "Bot prepares, your team completes" instead — or connect one under Connectors.'
     );
   });
 

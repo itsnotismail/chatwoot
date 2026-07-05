@@ -347,7 +347,7 @@ describe('DiscoveryFlowTab.vue', () => {
                 capability: 'order.draft',
                 kind: 'hard',
                 message:
-                  '"Bot completes it" needs a connected system providing order.draft. Choose "Bot prepares, your team completes" instead — or connect one under Connectors.',
+                  '"Bot completes it" needs a connected system that can create orders. Choose "Bot prepares, your team completes" instead — or connect one under Connectors.',
               },
             ],
             soft_warnings: [],
@@ -365,7 +365,7 @@ describe('DiscoveryFlowTab.vue', () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain(
-      '"Bot completes it" needs a connected system providing order.draft. Choose "Bot prepares, your team completes" instead — or connect one under Connectors.'
+      '"Bot completes it" needs a connected system that can create orders. Choose "Bot prepares, your team completes" instead — or connect one under Connectors.'
     );
   });
 
