@@ -1,7 +1,8 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import InfoHint from './InfoHint.vue';
+import TemplateEditor from './TemplateEditor.vue';
 
 const props = defineProps({
   notifications: { type: Object, required: true },
@@ -22,7 +23,6 @@ const TOKEN_MASK = '********';
 // from the "off" sentinel below.
 const ROUTE_DEFAULT = 'default';
 const ROUTE_OFF = 'off';
-const TEMPLATE_MAX = 1000;
 const NOTIFY_GUIDANCE_MAX = 500;
 
 const isGuideOpen = ref(false);
@@ -90,9 +90,12 @@ function seedRoutes(notifications, channelList) {
   const idToIndex = new Map(
     (channelList || []).map((c, index) => [c.id, index])
   );
+  // A subscription's channel_id is either a real channel id (routes to that
+  // channel), or null (routes to the default channel, carrying a template).
+  // Only drop a subscription if it names a channel id that no longer exists.
   const subsByEvent = new Map(
     (notifications.subscriptions || [])
-      .filter(s => idToIndex.has(s.channel_id))
+      .filter(s => s.channel_id === null || idToIndex.has(s.channel_id))
       .map(s => [s.event, s])
   );
   const mutedEvents = new Set(notifications.muted_events || []);
@@ -101,6 +104,12 @@ function seedRoutes(notifications, channelList) {
   const stagesByKey = new Map(
     props.notifiableStages.map(s => [s.stage_key, s])
   );
+
+  function routeForSub(sub) {
+    return sub.channel_id === null
+      ? ROUTE_DEFAULT
+      : idToIndex.get(sub.channel_id);
+  }
 
   routes.splice(
     0,
@@ -125,7 +134,7 @@ function seedRoutes(notifications, channelList) {
         if (sub) {
           return {
             ...base,
-            route: idToIndex.get(sub.channel_id),
+            route: routeForSub(sub),
             template: sub.template || '',
           };
         }
@@ -135,7 +144,7 @@ function seedRoutes(notifications, channelList) {
       if (sub) {
         return {
           ...base,
-          route: idToIndex.get(sub.channel_id),
+          route: routeForSub(sub),
           template: sub.template || '',
         };
       }
@@ -174,28 +183,63 @@ function emitUpdate() {
       enabled: c.enabled,
       is_default: c.isDefault,
     })),
-    // "Default" (no explicit subscription, not muted/disabled) → no entry in
-    // either list. A specific channel → a subscription row. "Off" on a fixed
-    // event → a muted_events entry (stage events never appear in
-    // muted_events; their "off" is notify_enabled=false on the stage
-    // instead). Guard against a route referencing a channel index that no
-    // longer exists (e.g. all channels were removed).
+    // "Default" with no template (no explicit subscription, not
+    // muted/disabled) → no entry in either list. A specific channel →
+    // a subscription row. "Default" with a non-empty template → a
+    // subscription row with channel_index: null (routes to the starred
+    // default channel, using this template). "Off" on a fixed event → a
+    // muted_events entry (stage events never appear in muted_events; their
+    // "off" is notify_enabled=false on the stage instead). Guard against a
+    // route referencing a channel index that no longer exists (e.g. all
+    // channels were removed).
     subscriptions: routes
-      .filter(
-        r =>
-          typeof r.route === 'number' &&
-          r.route >= 0 &&
-          r.route < channels.length
-      )
+      .filter(r => {
+        if (typeof r.route === 'number') {
+          return r.route >= 0 && r.route < channels.length;
+        }
+        return r.route === ROUTE_DEFAULT && r.template;
+      })
       .map(r => ({
         event: r.event,
-        channel_index: r.route,
+        channel_index: typeof r.route === 'number' ? r.route : null,
         template: r.template,
       })),
     muted_events: routes
       .filter(r => !r.isStage && r.route === ROUTE_OFF)
       .map(r => r.event),
   });
+}
+
+// Refs to each row's template <textarea> element, keyed by row index, so a
+// chip click can read/write the cursor position on the correct element.
+const templateRefs = reactive({});
+function setTemplateRef(index, el) {
+  if (el) templateRefs[index] = el;
+  else delete templateRefs[index];
+}
+
+function insertChipToken(index, token) {
+  const row = routes[index];
+  const el = templateRefs[index];
+  const current = row.template || '';
+  const start = el ? (el.selectionStart ?? current.length) : current.length;
+  const end = el ? (el.selectionEnd ?? current.length) : current.length;
+  const next = current.slice(0, start) + token + current.slice(end);
+  row.template = next;
+  emitUpdate();
+  // Restore focus and place the cursor right after the inserted token.
+  nextTick(() => {
+    if (el) {
+      const caret = start + token.length;
+      el.focus();
+      el.setSelectionRange(caret, caret);
+    }
+  });
+}
+
+function startFromDefault(index, defaultTemplate) {
+  routes[index].template = defaultTemplate;
+  emitUpdate();
 }
 
 function emitStageNotify(route, fields) {
@@ -257,8 +301,9 @@ function onRouteChange(index, value) {
     value === ROUTE_DEFAULT || value === ROUTE_OFF ? value : Number(value);
   const row = routes[index];
   row.route = route;
-  // Template overrides only apply when routed to a specific channel.
-  if (typeof route !== 'number') {
+  // Template overrides apply to a specific channel or Default; Off has no
+  // subscription at all, so any template is dropped.
+  if (route === ROUTE_OFF) {
     row.template = '';
   }
 
@@ -502,58 +547,54 @@ const stageRows = computed(() => allRows.value.filter(r => r.isStage));
             v-for="row in conversationRows"
             :key="row.event"
             data-testid="routing-row"
-            class="flex items-center justify-between gap-3 px-3 py-2.5 border-b last:border-b-0"
+            class="flex flex-col gap-2 px-3 py-2.5 border-b last:border-b-0"
           >
-            <span class="text-sm text-n-slate-12 flex-1 min-w-0">{{
-              row.label
-            }}</span>
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-sm text-n-slate-12 flex-1 min-w-0">{{
+                row.label
+              }}</span>
 
-            <select
-              data-testid="route-channel-select"
-              :value="row.route"
-              :aria-label="
-                t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SEND_TO_LABEL')
-              "
-              class="w-64 shrink-0 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-              @change="onRouteChange(row.index, $event.target.value)"
-            >
-              <option :value="ROUTE_OFF">
-                {{
-                  t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ROUTE_OFF_OPTION')
-                }}
-              </option>
-              <option :value="ROUTE_DEFAULT">
-                {{
-                  t(
-                    'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ROUTE_DEFAULT_OPTION'
-                  )
-                }}
-              </option>
-              <option
-                v-for="(channel, channelIndex) in channels"
-                :key="channelIndex"
-                :value="channelIndex"
-              >
-                {{ channelLabel(channel, channelIndex) }}
-              </option>
-            </select>
-
-            <label
-              v-if="typeof row.route === 'number'"
-              class="flex flex-col gap-1"
-            >
-              <input
-                data-testid="route-template-input"
-                type="text"
-                :value="row.template"
-                :maxlength="TEMPLATE_MAX"
-                :placeholder="
-                  t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.TEMPLATE_LABEL')
+              <select
+                data-testid="route-channel-select"
+                :value="row.route"
+                :aria-label="
+                  t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SEND_TO_LABEL')
                 "
-                class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-                @change="onRouteTemplate(row.index, $event.target.value)"
-              />
-            </label>
+                class="w-64 shrink-0 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                @change="onRouteChange(row.index, $event.target.value)"
+              >
+                <option :value="ROUTE_OFF">
+                  {{
+                    t(
+                      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ROUTE_OFF_OPTION'
+                    )
+                  }}
+                </option>
+                <option :value="ROUTE_DEFAULT">
+                  {{
+                    t(
+                      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ROUTE_DEFAULT_OPTION'
+                    )
+                  }}
+                </option>
+                <option
+                  v-for="(channel, channelIndex) in channels"
+                  :key="channelIndex"
+                  :value="channelIndex"
+                >
+                  {{ channelLabel(channel, channelIndex) }}
+                </option>
+              </select>
+            </div>
+
+            <TemplateEditor
+              v-if="row.route !== ROUTE_OFF"
+              :row="row"
+              @chip="insertChipToken(row.index, $event)"
+              @template="onRouteTemplate(row.index, $event)"
+              @start-from-default="startFromDefault(row.index, $event)"
+              @register="setTemplateRef(row.index, $event)"
+            />
           </div>
         </template>
 
@@ -567,58 +608,54 @@ const stageRows = computed(() => allRows.value.filter(r => r.isStage));
             v-for="row in stageRows"
             :key="row.event"
             data-testid="routing-row"
-            class="flex items-center justify-between gap-3 px-3 py-2.5 border-b last:border-b-0"
+            class="flex flex-col gap-2 px-3 py-2.5 border-b last:border-b-0"
           >
-            <span class="text-sm text-n-slate-12 flex-1 min-w-0">{{
-              row.label
-            }}</span>
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-sm text-n-slate-12 flex-1 min-w-0">{{
+                row.label
+              }}</span>
 
-            <select
-              data-testid="route-channel-select"
-              :value="row.route"
-              :aria-label="
-                t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SEND_TO_LABEL')
-              "
-              class="w-64 shrink-0 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-              @change="onRouteChange(row.index, $event.target.value)"
-            >
-              <option :value="ROUTE_OFF">
-                {{
-                  t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ROUTE_OFF_OPTION')
-                }}
-              </option>
-              <option :value="ROUTE_DEFAULT">
-                {{
-                  t(
-                    'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ROUTE_DEFAULT_OPTION'
-                  )
-                }}
-              </option>
-              <option
-                v-for="(channel, channelIndex) in channels"
-                :key="channelIndex"
-                :value="channelIndex"
-              >
-                {{ channelLabel(channel, channelIndex) }}
-              </option>
-            </select>
-
-            <label
-              v-if="typeof row.route === 'number'"
-              class="flex flex-col gap-1"
-            >
-              <input
-                data-testid="route-template-input"
-                type="text"
-                :value="row.template"
-                :maxlength="TEMPLATE_MAX"
-                :placeholder="
-                  t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.TEMPLATE_LABEL')
+              <select
+                data-testid="route-channel-select"
+                :value="row.route"
+                :aria-label="
+                  t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SEND_TO_LABEL')
                 "
-                class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-                @change="onRouteTemplate(row.index, $event.target.value)"
-              />
-            </label>
+                class="w-64 shrink-0 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                @change="onRouteChange(row.index, $event.target.value)"
+              >
+                <option :value="ROUTE_OFF">
+                  {{
+                    t(
+                      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ROUTE_OFF_OPTION'
+                    )
+                  }}
+                </option>
+                <option :value="ROUTE_DEFAULT">
+                  {{
+                    t(
+                      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ROUTE_DEFAULT_OPTION'
+                    )
+                  }}
+                </option>
+                <option
+                  v-for="(channel, channelIndex) in channels"
+                  :key="channelIndex"
+                  :value="channelIndex"
+                >
+                  {{ channelLabel(channel, channelIndex) }}
+                </option>
+              </select>
+            </div>
+
+            <TemplateEditor
+              v-if="row.route !== ROUTE_OFF"
+              :row="row"
+              @chip="insertChipToken(row.index, $event)"
+              @template="onRouteTemplate(row.index, $event)"
+              @start-from-default="startFromDefault(row.index, $event)"
+              @register="setTemplateRef(row.index, $event)"
+            />
 
             <label v-if="row.route !== ROUTE_OFF" class="flex flex-col gap-1">
               <input

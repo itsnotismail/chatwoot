@@ -222,7 +222,17 @@
         "SEND_TO_LABEL": "Send to",
         "TEMPLATE_LABEL": "Template (optional)",
         "TEMPLATE_TOOLTIP": "Customize the message sent for this event. Leave blank to use the default wording.",
-        "TEMPLATE_CHAR_COUNT": "{count}/{max}"
+        "TEMPLATE_CHAR_COUNT": "{count}/{max}",
+        "TEMPLATE_HINT": "Leave blank to use the default layout.",
+        "START_FROM_DEFAULT": "Start from default",
+        "PREVIEW_LABEL": "Preview",
+        "CHIP_ITEMS": "Items",
+        "CHIP_ADDRESS": "Address",
+        "CHIP_PHONE": "Phone",
+        "CHIP_PAYMENT": "Payment",
+        "CHIP_SUMMARY": "Summary",
+        "CHIP_LINK": "Link",
+        "CHIP_STAGE": "Stage"
       }
     },
     "SECTION": {

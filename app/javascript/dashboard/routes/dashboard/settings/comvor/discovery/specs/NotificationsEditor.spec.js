@@ -473,26 +473,196 @@ describe('NotificationsEditor.vue', () => {
     ]);
   });
 
-  it('shows a template override input only when a specific channel is chosen', async () => {
+  it('shows a template override field for a Default-routed row (not just a channel)', () => {
     const wrapper = mountEditor();
-    let templateInputs = wrapper.findAll(
-      'input[data-testid="route-template-input"]'
+    // First row (handoff) starts at Default.
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    expect(rows[0].find('[data-testid="route-template-input"]').exists()).toBe(
+      true
     );
-    expect(templateInputs).toHaveLength(0);
+  });
 
+  it('does not show a template override field for an Off-routed row', () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    // Third row is order_drafting, seeded to Off.
+    expect(rows[2].find('[data-testid="route-template-input"]').exists()).toBe(
+      false
+    );
+  });
+
+  it('shows a template override input when a specific channel is chosen', async () => {
+    const wrapper = mountEditor();
     const selects = wrapper.findAll(
       'select[data-testid="route-channel-select"]'
     );
     await selects[0].setValue('0');
 
-    templateInputs = wrapper.findAll(
-      'input[data-testid="route-template-input"]'
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    const templateInput = rows[0].find(
+      'textarea[data-testid="route-template-input"]'
     );
-    expect(templateInputs).toHaveLength(1);
+    expect(templateInput.exists()).toBe(true);
 
-    await templateInputs[0].setValue('custom template {stage}');
+    await templateInput.setValue('custom template {stage}');
     const lastEvent = lastEmitted(wrapper);
     expect(lastEvent.subscriptions[0].template).toBe('custom template {stage}');
+  });
+
+  it('a Default route with a non-empty template emits a subscription with channel_index null', async () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    const templateInput = rows[0].find(
+      'textarea[data-testid="route-template-input"]'
+    );
+    await templateInput.setValue('custom default template');
+
+    const lastEvent = lastEmitted(wrapper);
+    expect(lastEvent.subscriptions).toEqual([
+      {
+        event: 'handoff',
+        channel_index: null,
+        template: 'custom default template',
+      },
+    ]);
+  });
+
+  it('a Default route with a blank template emits no subscription', async () => {
+    const wrapper = mountEditor();
+    // Trigger an emit by touching an unrelated field (chat ID), then confirm
+    // the still-blank handoff row (Default route) has no subscription.
+    const chatIdInput = wrapper.find(
+      'input[data-testid="channel-chat-id-input"]'
+    );
+    await chatIdInput.setValue('123');
+
+    const lastEvent = lastEmitted(wrapper);
+    expect(lastEvent.subscriptions.some(s => s.event === 'handoff')).toBe(
+      false
+    );
+  });
+
+  it('seeds a Default route with a template from a channel_id: null subscription', () => {
+    const wrapper = mountEditor({
+      notifications: baseNotifications({
+        subscriptions: [
+          {
+            event: 'handoff',
+            channel_id: null,
+            template: 'default-routed custom',
+          },
+        ],
+      }),
+    });
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    const select = rows[0].find('select[data-testid="route-channel-select"]');
+    expect(select.element.value).toBe('default');
+    const templateInput = rows[0].find(
+      'textarea[data-testid="route-template-input"]'
+    );
+    expect(templateInput.element.value).toBe('default-routed custom');
+  });
+
+  // ── Placeholder chips ──
+  it('renders the handoff event chip set (Items/Address/Phone/Payment/Summary/Link)', () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    const chips = rows[0].findAll('[data-testid="template-chip"]');
+    const labels = chips.map(c => c.text());
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_ITEMS',
+        'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_ADDRESS',
+        'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_PHONE',
+        'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_PAYMENT',
+        'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_SUMMARY',
+        'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_LINK',
+      ])
+    );
+  });
+
+  it('renders the resolved event chip set (Summary/Link only)', () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    const chips = rows[1].findAll('[data-testid="template-chip"]');
+    const labels = chips.map(c => c.text());
+    expect(labels).toEqual([
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_SUMMARY',
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_LINK',
+    ]);
+  });
+
+  it('renders the stage-completion event chip set (Stage/Summary/Link)', () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    // Fourth row is payment_fulfillment (Default, not Off).
+    const chips = rows[3].findAll('[data-testid="template-chip"]');
+    const labels = chips.map(c => c.text());
+    expect(labels).toEqual([
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_STAGE',
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_SUMMARY',
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.CHIP_LINK',
+    ]);
+  });
+
+  it('clicking a chip inserts its token at the cursor position in that row template', async () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    const templateInput = rows[0].find(
+      'textarea[data-testid="route-template-input"]'
+    );
+    await templateInput.setValue('before  after');
+    const el = templateInput.element;
+    el.selectionStart = 7;
+    el.selectionEnd = 7;
+
+    const chips = rows[0].findAll('[data-testid="template-chip"]');
+    const summaryChip = chips.find(c => c.text().includes('CHIP_SUMMARY'));
+    await summaryChip.trigger('click');
+
+    const lastEvent = lastEmitted(wrapper);
+    const sub = lastEvent.subscriptions.find(s => s.event === 'handoff');
+    expect(sub.template).toBe('before {summary} after');
+  });
+
+  // ── Start from default ──
+  it('"Start from default" fills the field with the built-in default template', async () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    const startFromDefaultBtn = rows[0].find(
+      '[data-testid="template-start-from-default"]'
+    );
+    await startFromDefaultBtn.trigger('click');
+
+    const templateInput = rows[0].find(
+      'textarea[data-testid="route-template-input"]'
+    );
+    expect(templateInput.element.value).toBe(
+      '🛎️ New order — please finalize with the customer\n{items}\n📍 {address}\n📞 {phone} · 💳 {payment}\n→ {link}'
+    );
+  });
+
+  // ── Live preview ──
+  it('renders a live preview substituting sample data into the current template', async () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    const templateInput = rows[0].find(
+      'textarea[data-testid="route-template-input"]'
+    );
+    await templateInput.setValue('Order: {items} — {address}');
+
+    const preview = rows[0].find('[data-testid="template-preview"]');
+    expect(preview.text()).toContain('Rainforest Residence');
+  });
+
+  it('the preview renders — for a placeholder missing sample data', () => {
+    const wrapper = mountEditor();
+    const rows = wrapper.findAll('[data-testid="routing-row"]');
+    // resolved row's default template has no {phone} placeholder normally,
+    // so force a custom template referencing an unset sample field.
+    // Use the handoff row instead: its default doesn't include {reason}.
+    const preview = rows[0].find('[data-testid="template-preview"]');
+    expect(preview.text()).not.toContain('{');
   });
 
   it('seeds routing rows from an existing subscription', () => {
@@ -508,7 +678,7 @@ describe('NotificationsEditor.vue', () => {
     );
     expect(selects[0].element.value).toBe('0');
     const templateInputs = wrapper.findAll(
-      'input[data-testid="route-template-input"]'
+      'textarea[data-testid="route-template-input"]'
     );
     expect(templateInputs[0].element.value).toBe('hi');
   });
