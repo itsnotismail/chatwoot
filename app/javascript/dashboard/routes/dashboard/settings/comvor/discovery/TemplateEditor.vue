@@ -16,8 +16,9 @@ const TEMPLATE_MAX = 1000;
 // Default templates: mirror of comvor-engine internal/notify/notifier.go
 // defaultTemplateFor — keep in sync.
 const DEFAULT_TEMPLATES = {
-  handoff:
+  new_order:
     '🛎️ New order — please finalize with the customer\n{items}\n📍 {address}\n📞 {phone} · 💳 {payment}\n→ {link}',
+  handoff: '👤 Conversation needs a human ({reason}) → {link}',
   resolved: '✅ Conversation resolved → {link}',
   stage: '📦 {stage} completed — {summary} → {link}',
 };
@@ -28,12 +29,16 @@ function defaultTemplateFor(row) {
 }
 
 // Placeholder chip sets per event, as [i18n label key, token] pairs.
-const HANDOFF_CHIPS = [
+const NEW_ORDER_CHIPS = [
   ['CHIP_ITEMS', '{items}'],
   ['CHIP_ADDRESS', '{address}'],
   ['CHIP_PHONE', '{phone}'],
   ['CHIP_PAYMENT', '{payment}'],
   ['CHIP_SUMMARY', '{summary}'],
+  ['CHIP_LINK', '{link}'],
+];
+const HANDOFF_CHIPS = [
+  ['CHIP_REASON', '{reason}'],
   ['CHIP_LINK', '{link}'],
 ];
 const RESOLVED_CHIPS = [
@@ -48,6 +53,7 @@ const STAGE_CHIPS = [
 
 const chips = computed(() => {
   if (props.row.isStage) return STAGE_CHIPS;
+  if (props.row.event === 'new_order') return NEW_ORDER_CHIPS;
   if (props.row.event === 'handoff') return HANDOFF_CHIPS;
   if (props.row.event === 'resolved') return RESOLVED_CHIPS;
   return [];
@@ -62,9 +68,13 @@ const PREVIEW_SAMPLE = {
     '• Play pen 120*120 + Gifts ×1 — MVR 1299\n• Ball pit balls ×1 — MVR 199',
   address: 'Rainforest Residence, Malé',
   phone: '9990805',
-  payment: 'Bank transfer',
+  // Deliberately absent: demonstrates the em-dash fallback for a named
+  // placeholder with no sample data (e.g. the customer hasn't confirmed a
+  // payment method yet when the order hands off).
+  payment: '',
   stage: 'Order taking',
   summary: 'Customer confirmed the order',
+  reason: 'customer asked for a human',
   link: 'https://…/conversations/24',
 };
 const EM_DASH = '—';

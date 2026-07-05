@@ -224,7 +224,7 @@ describe('NotificationsTab.vue', () => {
     expect(wrapper.vm.notificationsDirty).toBe(false);
   });
 
-  it('still renders the handoff/resolved routing rows when the flow-config fetch fails', async () => {
+  it('still renders the new_order/handoff/resolved routing rows when the flow-config fetch fails', async () => {
     global.fetch = vi.fn((url, opts) => {
       if (url.endsWith('/flow-config')) {
         return Promise.resolve({
@@ -266,10 +266,13 @@ describe('NotificationsTab.vue', () => {
     });
     await flushPromises();
 
-    // The fixed events (handoff/resolved) don't depend on flow-config, so
-    // the routing table still renders them even though the notifiable-stages
-    // fetch failed.
+    // The fixed events (new_order/handoff/resolved) don't depend on
+    // flow-config, so the routing table still renders them even though the
+    // notifiable-stages fetch failed.
     expect(wrapper.vm.notifiableStages).toEqual([]);
+    expect(wrapper.text()).toContain(
+      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.EVENT_NEW_ORDER'
+    );
     expect(wrapper.text()).toContain(
       'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.EVENT_HANDOFF'
     );
@@ -277,7 +280,7 @@ describe('NotificationsTab.vue', () => {
       'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.EVENT_RESOLVED'
     );
     const routingRows = wrapper.findAll('[data-testid="routing-row"]');
-    expect(routingRows).toHaveLength(2);
+    expect(routingRows).toHaveLength(3);
   });
 
   it('notificationsDirty is a computed comparison against the loaded baseline: true after an edit, false again once reverted by hand', async () => {

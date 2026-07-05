@@ -43,6 +43,11 @@ const routes = reactive([]);
 function fixedEventRows() {
   return [
     {
+      event: 'new_order',
+      labelKey: 'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.EVENT_NEW_ORDER',
+      isStage: false,
+    },
+    {
       event: 'handoff',
       labelKey: 'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.EVENT_HANDOFF',
       isStage: false,
