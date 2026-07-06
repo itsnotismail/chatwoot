@@ -128,6 +128,27 @@ const TONE_OPTIONS = [
   { value: 'concise', label: t('COMVOR_SETTINGS.FIELDS.TONE.OPTIONS.CONCISE') },
 ];
 
+// Timezone/currency were previously free-text inputs, which let an account
+// end up with timezone "MVR" (a currency code) — Go's time.LoadLocation
+// rejects that, silently killing current-time injection on the backend.
+// Both are now validated dropdowns. Only one option each exists today (the
+// business's actual locale); append more IANA zones / ISO currency codes to
+// these arrays as support grows. Stored value and label both use the
+// canonical code so the wire format never drifts from the display text.
+const TIMEZONE_OPTIONS = [
+  {
+    value: 'Indian/Maldives',
+    label: t('COMVOR_SETTINGS.FIELDS.TIMEZONE.OPTIONS.INDIAN_MALDIVES'),
+  },
+];
+
+const CURRENCY_OPTIONS = [
+  {
+    value: 'MVR',
+    label: t('COMVOR_SETTINGS.FIELDS.CURRENCY.OPTIONS.MVR'),
+  },
+];
+
 const LEAD_CHIPS = [
   {
     key: 'NAME',
@@ -392,8 +413,17 @@ async function fetchSettings() {
       contact_email: data.contact_email || '',
       location: data.location || '',
       operating_hours: data.operating_hours || '',
-      timezone: data.timezone || '',
-      currency: data.currency || '',
+      // Legacy accounts may have an empty value, or a value that predates the
+      // dropdown (e.g. the currency code "MVR" was once stored as the
+      // timezone). Preselect the first valid option in that case so the form
+      // shows a real selection — the next manual save then heals the stored
+      // value. This does NOT auto-save; it only affects what's in `form`.
+      timezone: TIMEZONE_OPTIONS.some(o => o.value === data.timezone)
+        ? data.timezone
+        : TIMEZONE_OPTIONS[0].value,
+      currency: CURRENCY_OPTIONS.some(o => o.value === data.currency)
+        ? data.currency
+        : CURRENCY_OPTIONS[0].value,
       policies: Object.fromEntries(
         (
           verticals.value.find(
@@ -864,28 +894,37 @@ onMounted(fetchSettings);
                 <span class="text-sm font-medium text-n-slate-12">{{
                   t('COMVOR_SETTINGS.FIELDS.TIMEZONE.LABEL')
                 }}</span>
-                <input
+                <select
                   v-model="form.timezone"
-                  type="text"
+                  data-testid="timezone-select"
                   class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-                  :placeholder="
-                    t('COMVOR_SETTINGS.FIELDS.TIMEZONE.PLACEHOLDER')
-                  "
-                />
+                >
+                  <option
+                    v-for="opt in TIMEZONE_OPTIONS"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
               </label>
               <label class="flex flex-col gap-1">
                 <span class="text-sm font-medium text-n-slate-12">{{
                   t('COMVOR_SETTINGS.FIELDS.CURRENCY.LABEL')
                 }}</span>
-                <input
+                <select
                   v-model="form.currency"
-                  type="text"
-                  maxlength="10"
+                  data-testid="currency-select"
                   class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-                  :placeholder="
-                    t('COMVOR_SETTINGS.FIELDS.CURRENCY.PLACEHOLDER')
-                  "
-                />
+                >
+                  <option
+                    v-for="opt in CURRENCY_OPTIONS"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
               </label>
             </div>
           </div>

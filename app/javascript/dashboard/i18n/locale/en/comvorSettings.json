@@ -308,11 +308,15 @@
       },
       "TIMEZONE": {
         "LABEL": "Timezone",
-        "PLACEHOLDER": "E.g. UTC, Asia/Dubai"
+        "OPTIONS": {
+          "INDIAN_MALDIVES": "Indian/Maldives (MVT, UTC+5)"
+        }
       },
       "CURRENCY": {
         "LABEL": "Currency",
-        "PLACEHOLDER": "E.g. USD, MVR"
+        "OPTIONS": {
+          "MVR": "MVR — Maldivian Rufiyaa"
+        }
       },
       "TOKEN_BUDGET": {
         "LABEL": "Token Budget Per Thread",
