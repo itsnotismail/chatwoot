@@ -159,4 +159,32 @@ describe('Index.vue — Profile tab timezone/currency dropdowns', () => {
     );
     expect(accountPut).toBeUndefined();
   });
+
+  it('saving after legacy healing sends the healed values', async () => {
+    mockFetch({ timezone: 'MVR', currency: '' });
+    const wrapper = mountIndex();
+    await flushPromises();
+
+    // Form should be healed to first valid options
+    expect(wrapper.vm.form.timezone).toBe('Indian/Maldives');
+    expect(wrapper.vm.form.currency).toBe('MVR');
+
+    // Click the save button
+    const saveButton = wrapper.find('button[class*="bg-n-brand"]');
+    await saveButton.trigger('click');
+    await flushPromises();
+
+    // Find the PUT call to the account endpoint
+    const accountPut = global.fetch.mock.calls.find(
+      ([url, opts]) =>
+        /\/api\/accounts\/\d+$/.test(url) && opts?.method === 'PUT'
+    );
+    expect(accountPut).toBeDefined();
+
+    // Parse the request body and verify healed values are sent
+    const [, opts] = accountPut;
+    const body = JSON.parse(opts.body);
+    expect(body.timezone).toBe('Indian/Maldives');
+    expect(body.currency).toBe('MVR');
+  });
 });
