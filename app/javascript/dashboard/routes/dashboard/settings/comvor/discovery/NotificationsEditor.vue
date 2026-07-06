@@ -630,35 +630,43 @@ function placeholdersFor(row) {
               row.label
             }}</span>
 
-            <select
-              data-testid="route-channel-select"
-              :value="row.route"
-              :aria-label="
-                t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SEND_TO_LABEL')
-              "
-              class="w-64 shrink-0 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-              @change="onRouteChange(row.index, $event.target.value)"
-            >
-              <option :value="ROUTE_OFF">
-                {{
-                  t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ROUTE_OFF_OPTION')
-                }}
-              </option>
-              <option :value="ROUTE_DEFAULT">
-                {{
-                  t(
-                    'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ROUTE_DEFAULT_OPTION'
-                  )
-                }}
-              </option>
-              <option
-                v-for="(channel, channelIndex) in channels"
-                :key="channelIndex"
-                :value="channelIndex"
+            <div class="relative w-64 shrink-0">
+              <select
+                data-testid="route-channel-select"
+                :value="row.route"
+                :aria-label="
+                  t('COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.SEND_TO_LABEL')
+                "
+                class="appearance-none w-full pr-9 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                @change="onRouteChange(row.index, $event.target.value)"
               >
-                {{ channelLabel(channel, channelIndex) }}
-              </option>
-            </select>
+                <option :value="ROUTE_OFF">
+                  {{
+                    t(
+                      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ROUTE_OFF_OPTION'
+                    )
+                  }}
+                </option>
+                <option :value="ROUTE_DEFAULT">
+                  {{
+                    t(
+                      'COMVOR_SETTINGS.DISCOVERY.NOTIFICATIONS.ROUTE_DEFAULT_OPTION'
+                    )
+                  }}
+                </option>
+                <option
+                  v-for="(channel, channelIndex) in channels"
+                  :key="channelIndex"
+                  :value="channelIndex"
+                >
+                  {{ channelLabel(channel, channelIndex) }}
+                </option>
+              </select>
+              <span
+                class="i-lucide-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-n-slate-11"
+                aria-hidden="true"
+              />
+            </div>
           </div>
 
           <TemplateEditor

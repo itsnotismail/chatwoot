@@ -759,18 +759,24 @@ onMounted(fetchSettings);
               <span class="text-sm font-medium text-n-slate-12">{{
                 t('COMVOR_SETTINGS.FIELDS.TONE.LABEL')
               }}</span>
-              <select
-                v-model="form.brand_voice"
-                class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-              >
-                <option
-                  v-for="opt in TONE_OPTIONS"
-                  :key="opt.value"
-                  :value="opt.value"
+              <div class="relative">
+                <select
+                  v-model="form.brand_voice"
+                  class="appearance-none w-full pr-9 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
                 >
-                  {{ opt.label }}
-                </option>
-              </select>
+                  <option
+                    v-for="opt in TONE_OPTIONS"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+                <span
+                  class="i-lucide-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-n-slate-11"
+                  aria-hidden="true"
+                />
+              </div>
               <span class="text-xs text-n-slate-11">{{
                 t('COMVOR_SETTINGS.FIELDS.TONE.HINT')
               }}</span>
@@ -894,37 +900,49 @@ onMounted(fetchSettings);
                 <span class="text-sm font-medium text-n-slate-12">{{
                   t('COMVOR_SETTINGS.FIELDS.TIMEZONE.LABEL')
                 }}</span>
-                <select
-                  v-model="form.timezone"
-                  data-testid="timezone-select"
-                  class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-                >
-                  <option
-                    v-for="opt in TIMEZONE_OPTIONS"
-                    :key="opt.value"
-                    :value="opt.value"
+                <div class="relative">
+                  <select
+                    v-model="form.timezone"
+                    data-testid="timezone-select"
+                    class="appearance-none w-full pr-9 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
                   >
-                    {{ opt.label }}
-                  </option>
-                </select>
+                    <option
+                      v-for="opt in TIMEZONE_OPTIONS"
+                      :key="opt.value"
+                      :value="opt.value"
+                    >
+                      {{ opt.label }}
+                    </option>
+                  </select>
+                  <span
+                    class="i-lucide-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-n-slate-11"
+                    aria-hidden="true"
+                  />
+                </div>
               </label>
               <label class="flex flex-col gap-1">
                 <span class="text-sm font-medium text-n-slate-12">{{
                   t('COMVOR_SETTINGS.FIELDS.CURRENCY.LABEL')
                 }}</span>
-                <select
-                  v-model="form.currency"
-                  data-testid="currency-select"
-                  class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-                >
-                  <option
-                    v-for="opt in CURRENCY_OPTIONS"
-                    :key="opt.value"
-                    :value="opt.value"
+                <div class="relative">
+                  <select
+                    v-model="form.currency"
+                    data-testid="currency-select"
+                    class="appearance-none w-full pr-9 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
                   >
-                    {{ opt.label }}
-                  </option>
-                </select>
+                    <option
+                      v-for="opt in CURRENCY_OPTIONS"
+                      :key="opt.value"
+                      :value="opt.value"
+                    >
+                      {{ opt.label }}
+                    </option>
+                  </select>
+                  <span
+                    class="i-lucide-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-n-slate-11"
+                    aria-hidden="true"
+                  />
+                </div>
               </label>
             </div>
           </div>
@@ -1120,25 +1138,31 @@ onMounted(fetchSettings);
                       'COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.TRIGGER_LABEL'
                     )
                   }}</label>
-                  <select
-                    v-model="form.instruction_modules.lead_collection.trigger"
-                    class="rounded border border-n-weak bg-n-surface-1 px-2 py-1 text-sm text-n-slate-12 focus:outline-none focus:ring-1 focus:ring-n-brand"
-                  >
-                    <option value="interest">
-                      {{
-                        t(
-                          'COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.TRIGGER_INTEREST'
-                        )
-                      }}
-                    </option>
-                    <option value="greeting">
-                      {{
-                        t(
-                          'COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.TRIGGER_GREETING'
-                        )
-                      }}
-                    </option>
-                  </select>
+                  <div class="relative">
+                    <select
+                      v-model="form.instruction_modules.lead_collection.trigger"
+                      class="appearance-none w-full pr-9 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                    >
+                      <option value="interest">
+                        {{
+                          t(
+                            'COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.TRIGGER_INTEREST'
+                          )
+                        }}
+                      </option>
+                      <option value="greeting">
+                        {{
+                          t(
+                            'COMVOR_SETTINGS.INSTRUCTIONS.LEAD_COLLECTION.TRIGGER_GREETING'
+                          )
+                        }}
+                      </option>
+                    </select>
+                    <span
+                      class="i-lucide-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-n-slate-11"
+                      aria-hidden="true"
+                    />
+                  </div>
                 </div>
                 <textarea
                   v-model="form.instruction_modules.lead_collection.custom"
@@ -1302,15 +1326,21 @@ onMounted(fetchSettings);
               <label class="text-sm font-medium text-n-slate-12 block mb-1">
                 {{ t('COMVOR_SETTINGS.CONNECTOR.TYPE_LABEL') }}
               </label>
-              <select
-                v-model="connectorType"
-                data-testid="connector-type-select"
-                class="w-full rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-              >
-                <option v-for="c in compatibleConnectors" :key="c" :value="c">
-                  {{ t(CONNECTOR_TYPE_LABELS[c] || c) }}
-                </option>
-              </select>
+              <div class="relative">
+                <select
+                  v-model="connectorType"
+                  data-testid="connector-type-select"
+                  class="appearance-none w-full pr-9 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+                >
+                  <option v-for="c in compatibleConnectors" :key="c" :value="c">
+                    {{ t(CONNECTOR_TYPE_LABELS[c] || c) }}
+                  </option>
+                </select>
+                <span
+                  class="i-lucide-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-n-slate-11"
+                  aria-hidden="true"
+                />
+              </div>
             </div>
 
             <template v-if="connectorType === 'ewity'">

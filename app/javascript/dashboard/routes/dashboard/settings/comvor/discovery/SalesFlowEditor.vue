@@ -175,25 +175,31 @@ function toggleGuidance(stageKey) {
               "
             />
           </span>
-          <select
-            data-testid="who-completes-select"
-            :value="stage.action_mode || 'auto'"
-            class="rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
-            @change="setActionMode(stage, $event.target.value)"
-          >
-            <option value="auto">
-              {{
-                t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.WHO_COMPLETES_AUTO')
-              }}
-            </option>
-            <option value="deferred">
-              {{
-                t(
-                  'COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.WHO_COMPLETES_DEFERRED'
-                )
-              }}
-            </option>
-          </select>
+          <div class="relative">
+            <select
+              data-testid="who-completes-select"
+              :value="stage.action_mode || 'auto'"
+              class="appearance-none w-full pr-9 rounded-lg border border-n-weak bg-n-surface-1 px-3 py-2 text-sm text-n-slate-12 focus:outline-none focus:ring-2 focus:ring-n-brand"
+              @change="setActionMode(stage, $event.target.value)"
+            >
+              <option value="auto">
+                {{
+                  t('COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.WHO_COMPLETES_AUTO')
+                }}
+              </option>
+              <option value="deferred">
+                {{
+                  t(
+                    'COMVOR_SETTINGS.DISCOVERY.SALES_EDITOR.WHO_COMPLETES_DEFERRED'
+                  )
+                }}
+              </option>
+            </select>
+            <span
+              class="i-lucide-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-n-slate-11"
+              aria-hidden="true"
+            />
+          </div>
         </label>
 
         <div v-if="stage.stage_key === cutoffKey" class="flex flex-col gap-1">
