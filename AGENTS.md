@@ -111,3 +111,25 @@ Practical checklist for any change impacting core logic or public APIs
 ## Branding / White-labeling note
 
 - For user-facing strings that currently contain "Chatwoot" but should adapt to branded/self-hosted installs, prefer applying `replaceInstallationName` from `shared/composables/useBranding` in the UI layer (for example tooltip and suggestion labels) instead of adding hardcoded brand-specific copy.
+
+## Deploy: backwards-compatible migrations only (Kamal zero-downtime)
+
+**Rule: any DB migration must be backwards-compatible with the currently
+deployed code.** From Step 2 on, this fork ships via Kamal (repo: `comvor-deploy`)
+with health-check-gated zero-downtime swaps of the `web` (Puma) + `job` (Sidekiq)
+roles. Migrations run in a Kamal **pre-deploy hook** (`rails db:chatwoot_prepare`)
+*before* the new containers boot — so the migrated schema is briefly shared by the
+still-running OLD web/job containers. A migration the old code can't tolerate
+breaks live conversations during the overlap.
+
+- Prefer additive migrations (new nullable columns, new tables/indexes). Add
+  indexes on hot tables `CONCURRENTLY`.
+- Column removals / renames / type changes: stage across ≥2 deploys
+  (expand → backfill → contract). Never drop or rename in the same release that
+  stops using the old shape.
+- **Upstream merges are the main risk here:** a batch of upstream Chatwoot
+  migrations can contain in-place breaking changes. Review the migration set of
+  every upstream merge against this rule before deploying, and split if needed.
+- Sidekiq draining relies on the 30s stop grace (deploy.chatwoot.yml `job`
+  role) — long-running jobs that outlive it get requeued, so keep jobs
+  idempotent.
