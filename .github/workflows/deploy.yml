@@ -23,6 +23,11 @@ jobs:
           repository: itsnotismail/comvor-deploy
           ref: main
           path: comvor-deploy
+          # comvor-deploy is PRIVATE and the default github.token is scoped to
+          # THIS repo only — without a deploy key this step 404s. Read-only
+          # deploy key on comvor-deploy; distinct from KAMAL_SSH_KEY. This
+          # checkout runs before the ssh-agent step, so no key conflict.
+          ssh-key: ${{ secrets.DEPLOY_CONFIG_KEY }}
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
