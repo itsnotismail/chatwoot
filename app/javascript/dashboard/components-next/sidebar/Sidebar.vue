@@ -579,12 +579,6 @@ const menuItems = computed(() => {
           icon: 'i-lucide-briefcase',
           to: accountScopedRoute('general_settings_index'),
         },
-        {
-          name: 'Settings Comvor AI',
-          label: t('COMVOR_SETTINGS.TITLE'),
-          icon: 'i-lucide-bot-message-square',
-          to: accountScopedRoute('comvor_settings_index'),
-        },
         // {
         //   name: 'Settings Captain',
         //   label: t('SIDEBAR.CAPTAIN_AI'),
