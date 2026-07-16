@@ -187,6 +187,20 @@ RSpec.describe 'Conversation Messages API', type: :request do
         expect(JSON.parse(response.body, symbolize_names: true)[:meta][:contact][:id]).to eq(conversation.contact_id)
       end
     end
+
+    context 'when it is an authenticated agent bot' do
+      let!(:agent_bot) { create(:agent_bot) }
+
+      it 'lists the conversation messages' do
+        create(:agent_bot_inbox, inbox: conversation.inbox, agent_bot: agent_bot)
+
+        get "/api/v1/accounts/#{account.id}/conversations/#{conversation.display_id}/messages",
+            headers: { api_access_token: agent_bot.access_token.token },
+            as: :json
+
+        expect(response).to have_http_status(:success)
+      end
+    end
   end
 
   describe 'DELETE /api/v1/accounts/{account.id}/conversations/:conversation_id/messages/:id' do
