@@ -27,6 +27,31 @@ describe('#mutations', () => {
   });
 
   describe('#updatePresence', () => {
+    it('keeps a synthetic bot agent online even when absent from the presence map', () => {
+      // Comvor: a bot-only inbox injects an "agent-bot-<n>" agent so the widget
+      // reads as available. It is not tracked in human presence, so it must NOT
+      // be flipped offline by a presence.update (which would render "away").
+      const state = {
+        records: [
+          {
+            id: 'agent-bot-1',
+            name: 'Comvor AI',
+            avatar_url: '',
+            availability_status: 'online',
+          },
+          {
+            id: 2,
+            name: 'Xavier',
+            avatar_url: '',
+            availability_status: 'online',
+          },
+        ],
+      };
+      mutations.updatePresence(state, {}); // empty presence map (no humans online)
+      expect(state.records[0].availability_status).toEqual('online');
+      expect(state.records[1].availability_status).toEqual('offline');
+    });
+
     it('updates agent presence', () => {
       const state = { records: agents };
       mutations.updatePresence(state, { 1: 'busy', 2: 'online' });

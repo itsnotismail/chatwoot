@@ -1,5 +1,4 @@
 import { getAvailableAgents } from 'widget/api/agent';
-import * as MutationHelpers from 'shared/helpers/vuex/mutationHelpers';
 import { getFromCache, setCache } from 'shared/helpers/cache';
 
 const state = {
@@ -49,7 +48,23 @@ export const mutations = {
   setAgents($state, data) {
     $state.records = data;
   },
-  updatePresence: MutationHelpers.updatePresence,
+  // Comvor: a synthetic AI-bot agent (id "agent-bot-<n>", injected by the
+  // widget inbox_members endpoint so a bot-only inbox reads as available) is
+  // NOT tracked in human presence, so the shared updatePresence would flip it
+  // to "offline" on the first presence.update and the widget would render "We
+  // are away". Keep bot agents at their fetched status; reconcile only real
+  // human agents against the presence map.
+  updatePresence($state, data) {
+    $state.records.forEach((element, index) => {
+      if (
+        typeof element.id === 'string' &&
+        element.id.startsWith('agent-bot-')
+      ) {
+        return;
+      }
+      $state.records[index].availability_status = data[element.id] || 'offline';
+    });
+  },
   setError($state, value) {
     $state.uiFlags.isError = value;
   },
