@@ -117,17 +117,19 @@ RSpec.describe AccountSamlSettings, type: :model do
 
   describe 'callbacks' do
     describe 'after_create_commit' do
-      it 'queues job to set account users to saml provider' do
-        expect(Saml::UpdateAccountUsersProviderJob).to receive(:perform_later).with(account.id, 'saml')
-        create(:account_saml_settings, account: account)
+      it 'does not bulk-convert existing users on create (Comvor: conversion is lazy, at first SSO)' do
+        expect do
+          create(:account_saml_settings, account: account)
+        end.not_to have_enqueued_job(Saml::UpdateAccountUsersProviderJob)
       end
     end
 
     describe 'after_destroy_commit' do
-      it 'queues job to reset account users provider' do
+      it 'still resets users to email provider on destroy (rollback path)' do
         settings = create(:account_saml_settings, account: account)
-        expect(Saml::UpdateAccountUsersProviderJob).to receive(:perform_later).with(account.id, 'email')
-        settings.destroy
+        expect do
+          settings.destroy!
+        end.to have_enqueued_job(Saml::UpdateAccountUsersProviderJob).with(account.id, 'email')
       end
     end
   end
