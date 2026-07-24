@@ -42,7 +42,7 @@ en:
       authentication_failed: 'Authentication failed. Please check your credentials and try again.'
   messages:
     reset_password: Request for password reset is successful. A email with instructions will be sent to your email if it exists.
-    reset_password_saml_user: This account uses SAML authentication. Password reset is not available. Please contact your administrator.
+    reset_password_saml_user: Your password is managed by Comvor. Reset it at app.comvor.com/forgot-password.
     login_saml_user: This account uses SAML authentication. Please sign in through your organization's SAML provider.
     saml_not_available: SAML authentication is not available in this installation.
     inbox_deletetion_response: Your inbox deletion request will be processed in some time.
