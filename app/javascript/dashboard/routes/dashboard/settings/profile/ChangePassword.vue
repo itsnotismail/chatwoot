@@ -1,6 +1,7 @@
 <script>
 import { useVuelidate } from '@vuelidate/core';
 import { required, minLength } from '@vuelidate/validators';
+import { mapGetters } from 'vuex';
 import { useAlert } from 'dashboard/composables';
 import { parseAPIErrorResponse } from 'dashboard/store/utils/api';
 import NextButton from 'dashboard/components-next/button/Button.vue';
@@ -45,6 +46,13 @@ export default {
     },
   },
   computed: {
+    ...mapGetters({
+      currentUser: 'getCurrentUser',
+    }),
+    // Comvor: saml users manage their password on the portal, not here.
+    isSamlUser() {
+      return this.currentUser?.provider === 'saml';
+    },
     isButtonDisabled() {
       return (
         !this.currentPassword ||
@@ -80,7 +88,7 @@ export default {
 </script>
 
 <template>
-  <form @submit.prevent="changePassword()">
+  <form v-if="!isSamlUser" @submit.prevent="changePassword()">
     <div class="flex flex-col w-full gap-4">
       <woot-input
         v-model="currentPassword"
@@ -139,4 +147,7 @@ export default {
       </div>
     </div>
   </form>
+  <p v-else class="text-sm text-slate-600 dark:text-slate-300">
+    {{ $t('PROFILE_SETTINGS.FORM.PASSWORD_SECTION.SAML_MANAGED_NOTE') }}
+  </p>
 </template>

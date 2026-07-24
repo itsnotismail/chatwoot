@@ -26,6 +26,17 @@ describe '/app/login', type: :request do
     end
   end
 
+  context 'when pricing plan is community' do
+    before do
+      allow(ChatwootHub).to receive(:pricing_plan).and_return('community')
+    end
+
+    it 'still includes saml in allowed login methods (Comvor fork: we own the fork, SAML is un-gated)' do
+      get '/app/login'
+      expect(response.body).to include('saml')
+    end
+  end
+
   # Routes are loaded once on app start
   # hence Rails.application.reload_routes! is used in this spec
   # ref : https://stackoverflow.com/a/63584877/939299

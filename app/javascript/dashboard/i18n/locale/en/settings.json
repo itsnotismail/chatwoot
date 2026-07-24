@@ -79,7 +79,8 @@
       "PASSWORD_SECTION": {
         "TITLE": "Password",
         "NOTE": "Updating your password would reset your logins in multiple devices.",
-        "BTN_TEXT": "Change password"
+        "BTN_TEXT": "Change password",
+        "SAML_MANAGED_NOTE": "Your password is managed by Comvor. Change it at app.comvor.com."
       },
       "SECURITY_SECTION": {
         "TITLE": "Security",

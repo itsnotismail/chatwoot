@@ -312,13 +312,15 @@ export default {
             @input="v$.credentials.password.$touch"
           >
             <p v-if="!globalConfig.disableUserProfileUpdate">
-              <router-link
-                to="auth/reset/password"
+              <!-- Comvor: password lifecycle lives on the portal. Chatwoot's own reset
+                   stays reachable only via direct API for provider='email' users. -->
+              <a
+                href="https://app.comvor.com/forgot-password"
                 class="text-sm text-link"
                 tabindex="4"
               >
                 {{ $t('LOGIN.FORGOT_PASSWORD') }}
-              </router-link>
+              </a>
             </p>
           </FormInput>
           <NextButton

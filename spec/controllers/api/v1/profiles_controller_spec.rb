@@ -119,6 +119,19 @@ RSpec.describe 'Profile API', type: :request do
         expect(response).to have_http_status(:unprocessable_entity)
       end
 
+      it 'declines password change for saml-provider users' do
+        saml_agent = create(:user, provider: 'saml', account: account, role: :agent)
+
+        put '/api/v1/profile',
+            params: { profile: { current_password: 'whatever', password: 'NewPassword1!', password_confirmation: 'NewPassword1!' } },
+            headers: saml_agent.create_new_auth_token,
+            as: :json
+
+        expect(response).to have_http_status(:forbidden)
+        json_response = response.parsed_body
+        expect(json_response['error']).to eq(I18n.t('messages.reset_password_saml_user'))
+      end
+
       it 'validate name' do
         user_name = 'test' * 999
         put '/api/v1/profile',

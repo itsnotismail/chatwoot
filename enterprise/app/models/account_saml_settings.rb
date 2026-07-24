@@ -27,7 +27,12 @@ class AccountSamlSettings < ApplicationRecord
 
   before_validation :set_sp_entity_id, if: :sp_entity_id_needs_generation?
 
-  after_create_commit :update_account_users_provider
+  # Comvor fork: upstream also bulk-flipped every account user to
+  # provider='saml' on create, which instantly blocks their password login.
+  # We convert lazily instead: each user flips at their first SSO
+  # (SamlUserBuilder#convert_existing_user_to_saml), so password login keeps
+  # working until a user actually adopts SSO. Destroy still resets everyone
+  # to 'email' so deleting the settings row is a complete rollback.
   after_destroy_commit :reset_account_users_provider
 
   def saml_enabled?
@@ -59,10 +64,6 @@ class AccountSamlSettings < ApplicationRecord
 
   def installation_name
     GlobalConfigService.load('INSTALLATION_NAME', 'Chatwoot')
-  end
-
-  def update_account_users_provider
-    Saml::UpdateAccountUsersProviderJob.perform_later(account_id, 'saml')
   end
 
   def reset_account_users_provider
