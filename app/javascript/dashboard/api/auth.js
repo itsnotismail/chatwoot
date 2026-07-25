@@ -19,7 +19,11 @@ export default {
         .delete(urlData.url)
         .then(response => {
           deleteIndexedDBOnLogout();
-          clearCookiesOnLogout();
+          // For SAML users the backend returns the Comvor portal single-logout
+          // URL; routing there clears the portal session too, then bounces
+          // back to the login page. Non-SAML users fall through unchanged.
+          const samlLogoutUrl = response?.data?.saml_logout_url;
+          clearCookiesOnLogout(samlLogoutUrl);
           resolve(response);
         })
         .catch(error => {
