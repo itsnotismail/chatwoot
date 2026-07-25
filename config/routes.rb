@@ -549,7 +549,9 @@ Rails.application.routes.draw do
   # PORTAL_FORK_SHARED_SECRET (NOT a user session). Deliberately outside
   # `namespace :api` so it never inherits Api::BaseController's
   # authenticate_user!. Flat controller constant on purpose: a nested
-  # Internal::Portal module would shadow Chatwoot's own top-level Portal model.
+  # Internal::Portal namespace would be a latent shadowing trap for any
+  # future nested-style code placed under it, since an unqualified Portal
+  # there would resolve to it rather than Chatwoot's top-level Portal model.
   namespace :internal, defaults: { format: 'json' } do
     post 'portal/agent_session', to: 'portal_agent_sessions#create'
   end
