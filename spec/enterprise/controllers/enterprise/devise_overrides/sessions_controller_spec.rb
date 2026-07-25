@@ -22,7 +22,20 @@ RSpec.describe DeviseOverrides::SessionsController, type: :controller do
   end
 
   def sign_in_with_portal_password(email: saml_user.email, password: portal_password)
-    with_modified_env(portal_env) { post :create, params: { email: email, password: password } }
+    params = { email: email }
+    params[:password] = password if password
+    with_modified_env(portal_env) { post :create, params: params }
+  end
+
+  def rendered_refusal
+    { status: response.status, body: response.parsed_body }
+  end
+
+  # The response an email nobody has ever heard of earns, with delegation on.
+  # Every delegated refusal has to be indistinguishable from this one.
+  def unknown_email_refusal
+    sign_in_with_portal_password(email: 'nobody@example.test')
+    rendered_refusal
   end
 
   describe 'POST #create with portal password delegation' do
@@ -98,14 +111,9 @@ RSpec.describe DeviseOverrides::SessionsController, type: :controller do
       # has ever heard of, or the endpoint becomes an account-enumeration oracle.
       it 'is byte for byte indistinguishable from a login for an email that does not exist' do
         sign_in_with_portal_password
-        delegated_rejection = { status: response.status, body: response.parsed_body }
+        delegated_rejection = rendered_refusal
 
-        with_modified_env(portal_env) do
-          post :create, params: { email: 'nobody@example.test', password: portal_password }
-        end
-        unknown_email = { status: response.status, body: response.parsed_body }
-
-        expect(delegated_rejection).to eq(unknown_email)
+        expect(delegated_rejection).to eq(unknown_email_refusal)
       end
     end
 
@@ -142,6 +150,18 @@ RSpec.describe DeviseOverrides::SessionsController, type: :controller do
         expect(a_request(:post, verify_url)).not_to have_been_made
       end
 
+      # Mirror image of the blank-password case above: with delegation off the
+      # SAML message is still correct advice, and today's payload survives
+      # verbatim. That is what makes the dark rollout provably inert.
+      it 'keeps the saml refusal for a blank password too' do
+        post :create, params: { email: saml_user.email }
+
+        expect(response).to have_http_status(:unauthorized)
+        expect(response.parsed_body['message']).to eq(I18n.t('messages.login_saml_user'))
+        expect(response.parsed_body['errors']).to eq([I18n.t('messages.login_saml_user')])
+        expect(a_request(:post, verify_url)).not_to have_been_made
+      end
+
       it 'still refuses a saml user when only the portal url is configured' do
         with_modified_env(COMVOR_PORTAL_API_URL: 'https://api.comvor.test') do
           post :create, params: { email: saml_user.email, password: portal_password }
@@ -152,9 +172,18 @@ RSpec.describe DeviseOverrides::SessionsController, type: :controller do
       end
     end
 
+    # Omitting a field is an easier leak to stumble into than mistyping one, so
+    # the blank-password branch has to land on the same generic refusal.
     context 'with no password supplied' do
-      it 'refuses without calling the portal' do
+      it 'is indistinguishable from a login for an email that does not exist' do
         with_modified_env(portal_env) { post :create, params: { email: saml_user.email } }
+        blank_password_refusal = rendered_refusal
+
+        expect(blank_password_refusal).to eq(unknown_email_refusal)
+      end
+
+      it 'never asks the portal to verify an empty credential' do
+        with_modified_env(portal_env) { post :create, params: { email: saml_user.email, password: '' } }
 
         expect(response).to have_http_status(:unauthorized)
         expect(a_request(:post, verify_url)).not_to have_been_made

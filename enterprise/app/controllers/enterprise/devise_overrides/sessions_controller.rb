@@ -4,9 +4,16 @@ module Enterprise::DeviseOverrides::SessionsController
   def create
     return super unless saml_user_attempting_password_auth?(params[:email], sso_auth_token: params[:sso_auth_token])
 
-    # Comvor Phase B: with delegation off (COMVOR_PORTAL_API_URL blank) or no
-    # password supplied, this is the pre-Phase-B refusal, unchanged.
-    return render_saml_login_error unless portal_password_delegation_available?(params[:password])
+    # Comvor Phase B, delegation OFF (COMVOR_PORTAL_API_URL blank): the
+    # pre-Phase-B refusal, byte for byte, blank password included. That is the
+    # dark-rollout guarantee.
+    return render_saml_login_error unless portal_password_delegation_available?
+
+    # Delegation ON with nothing to verify. Refuse here rather than asking the
+    # portal to check an empty credential — and refuse it the generic way,
+    # because otherwise simply OMITTING the password field would still tell an
+    # anonymous caller that this email is a provisioned SAML agent.
+    return render_portal_rejected_error if params[:password].blank?
 
     case portal_password_verifier.perform
     when :ok then sign_in_portal_verified_user
@@ -86,11 +93,11 @@ module Enterprise::DeviseOverrides::SessionsController
   #   this user, so "sign in through your SAML provider" is the correct advice,
   #   and keeping that exact payload is what makes the dark rollout provably
   #   inert.
-  # - Delegation ON (here): the form they just used DOES work — the portal
-  #   simply said the credential was wrong. A SAML-specific reply would be both
-  #   bad advice and an enumeration oracle, telling an anonymous caller that this
-  #   email is a provisioned SAML agent, which Devise's refusal for an unknown
-  #   email does not.
+  # - Delegation ON (here): the form they just used DOES work — the credential
+  #   was simply wrong, absent, or unverifiable. A SAML-specific reply would be
+  #   both bad advice and an enumeration oracle, telling an anonymous caller that
+  #   this email is a provisioned SAML agent, which Devise's refusal for an
+  #   unknown email does not.
   #
   # So call DeviseTokenAuth's own bad-credentials render rather than any copy of
   # it: a mistyped password for a SAML agent then stays byte-for-byte
