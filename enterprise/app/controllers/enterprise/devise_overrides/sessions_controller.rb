@@ -11,7 +11,7 @@ module Enterprise::DeviseOverrides::SessionsController
     case portal_password_verifier.perform
     when :ok then sign_in_portal_verified_user
     when :totp_required then render_portal_totp_error
-    else render_saml_login_error
+    else render_portal_rejected_error
     end
   end
 
@@ -77,6 +77,27 @@ module Enterprise::DeviseOverrides::SessionsController
 
     sign_in(:user, @resource, store: false, bypass: false)
     render_create_success
+  end
+
+  # There are deliberately two refusal messages, and which one you get depends on
+  # whether delegation is on:
+  #
+  # - Delegation OFF (render_saml_login_error): a password can never work for
+  #   this user, so "sign in through your SAML provider" is the correct advice,
+  #   and keeping that exact payload is what makes the dark rollout provably
+  #   inert.
+  # - Delegation ON (here): the form they just used DOES work — the portal
+  #   simply said the credential was wrong. A SAML-specific reply would be both
+  #   bad advice and an enumeration oracle, telling an anonymous caller that this
+  #   email is a provisioned SAML agent, which Devise's refusal for an unknown
+  #   email does not.
+  #
+  # So call DeviseTokenAuth's own bad-credentials render rather than any copy of
+  # it: a mistyped password for a SAML agent then stays byte-for-byte
+  # indistinguishable from an unknown email or any other failed login, and stays
+  # that way if upstream ever changes the wording or the shape.
+  def render_portal_rejected_error
+    render_create_error_bad_credentials
   end
 
   def render_saml_login_error

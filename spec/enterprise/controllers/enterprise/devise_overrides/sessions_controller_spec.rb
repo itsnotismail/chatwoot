@@ -81,14 +81,31 @@ RSpec.describe DeviseOverrides::SessionsController, type: :controller do
     end
 
     context 'when the portal rejects the password' do
-      it 'returns the existing saml refusal' do
-        stub_verify({ ok: false, totp_required: false })
+      before { stub_verify({ ok: false, totp_required: false }) }
 
+      it 'returns the generic bad credentials refusal, not a saml specific one' do
         sign_in_with_portal_password
 
         expect(response).to have_http_status(:unauthorized)
-        expect(response.parsed_body['message']).to eq(I18n.t('messages.login_saml_user'))
+        expect(response.parsed_body['errors']).to eq([I18n.t('devise_token_auth.sessions.bad_credentials')])
+        expect(response.parsed_body).not_to have_key('message')
+        expect(response.parsed_body['errors']).not_to include(I18n.t('messages.login_saml_user'))
         expect(response.headers['access-token']).to be_nil
+      end
+
+      # Pins the property rather than a string: a wrong password for a
+      # provisioned SAML agent must not be tellable apart from an email nobody
+      # has ever heard of, or the endpoint becomes an account-enumeration oracle.
+      it 'is byte for byte indistinguishable from a login for an email that does not exist' do
+        sign_in_with_portal_password
+        delegated_rejection = { status: response.status, body: response.parsed_body }
+
+        with_modified_env(portal_env) do
+          post :create, params: { email: 'nobody@example.test', password: portal_password }
+        end
+        unknown_email = { status: response.status, body: response.parsed_body }
+
+        expect(delegated_rejection).to eq(unknown_email)
       end
     end
 
@@ -111,7 +128,7 @@ RSpec.describe DeviseOverrides::SessionsController, type: :controller do
         sign_in_with_portal_password
 
         expect(response).to have_http_status(:unauthorized)
-        expect(response.parsed_body['message']).to eq(I18n.t('messages.login_saml_user'))
+        expect(response.parsed_body['errors']).to eq([I18n.t('devise_token_auth.sessions.bad_credentials')])
       end
     end
 
