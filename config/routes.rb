@@ -545,6 +545,15 @@ Rails.application.routes.draw do
     end
   end
 
+  # Comvor: portal -> fork internal API, authenticated by
+  # PORTAL_FORK_SHARED_SECRET (NOT a user session). Deliberately outside
+  # `namespace :api` so it never inherits Api::BaseController's
+  # authenticate_user!. Flat controller constant on purpose: a nested
+  # Internal::Portal module would shadow Chatwoot's own top-level Portal model.
+  namespace :internal, defaults: { format: 'json' } do
+    post 'portal/agent_session', to: 'portal_agent_sessions#create'
+  end
+
   get 'hc/:slug', to: 'public/api/v1/portals#show'
   get 'hc/:slug/sitemap.xml', to: 'public/api/v1/portals#sitemap'
   get 'hc/:slug/:locale', to: 'public/api/v1/portals#show'
