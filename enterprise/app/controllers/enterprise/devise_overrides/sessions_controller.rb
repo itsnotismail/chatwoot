@@ -9,6 +9,15 @@ module Enterprise::DeviseOverrides::SessionsController
     # dark-rollout guarantee.
     return render_saml_login_error unless portal_password_delegation_available?
 
+    # Comvor Phase C: the second leg of a challenge carries an mfa_token and a
+    # code, not a password. Some clients resend the email alongside it, which
+    # would otherwise land on the blank-password refusal below and break the MFA
+    # screen. Hand it to the OSS controller, which routes it to
+    # handle_mfa_verification (overridden below). Placed AFTER the delegation
+    # check so that with delegation off this file behaves byte for byte as it
+    # did before — a saml user cannot hold an mfa_token in that world anyway.
+    return super if mfa_verification_request?
+
     # Delegation ON with nothing to verify. Refuse here rather than asking the
     # portal to check an empty credential — and refuse it the generic way,
     # because otherwise simply OMITTING the password field would still tell an
@@ -17,7 +26,7 @@ module Enterprise::DeviseOverrides::SessionsController
 
     case portal_password_verifier.perform
     when :ok then sign_in_portal_verified_user
-    when :totp_required then render_portal_totp_error
+    when :totp_required then render_portal_mfa_challenge
     else render_portal_rejected_error
     end
   end
@@ -48,6 +57,67 @@ module Enterprise::DeviseOverrides::SessionsController
 
   private
 
+  # Comvor Phase C: answers the second factor for a PORTAL-flavoured challenge,
+  # and only for that. Anything else — a Chatwoot-flavoured mfa_token, a forged
+  # or expired one, or any token at all while delegation is off — falls through
+  # to `super`, so Chatwoot's own MFA path is completely untouched.
+  def handle_mfa_verification
+    user = portal_mfa_challenge_user
+    return super if user.nil?
+
+    # The app's MFA screen sends the authenticator code as otp_code and a
+    # recovery code as backup_code. The portal tries TOTP first and a recovery
+    # code second and answers with one undifferentiated rejection, so both
+    # fields collapse into a single value here.
+    code = params[:otp_code].presence || params[:backup_code].presence
+    return render_mfa_error('errors.mfa.invalid_code') if code.blank?
+
+    verified = Internal::PortalTotpVerifier.new(
+      email: user.email,
+      code: code,
+      # The END USER's address; see Internal::PortalTotpVerifier.
+      client_ip: request.remote_ip
+    ).perform
+
+    # Deliberately the same key AND the same default status Chatwoot's own MFA
+    # path renders for a bad code, so a portal-backed failure is
+    # indistinguishable from a Chatwoot one. The verifier fails closed, so a
+    # portal outage lands here too: a refusal, never a 500 and never a session.
+    return render_mfa_error('errors.mfa.invalid_code') unless verified
+
+    sign_in_portal_verified_user(user)
+  end
+
+  # The portal claim is the ONLY discriminator. Not user.provider: a
+  # provider:'saml' agent can hold Chatwoot-side MFA as well, and Phase B routes
+  # exactly those users to handle_mfa_required, so the provider cannot tell you
+  # which kind of challenge was issued. Reading it wrong would send a
+  # Chatwoot-MFA user's code to the portal, or a portal user's code to Chatwoot.
+  #
+  # nil (=> `super`) whenever delegation is off, so the OSS path is byte for
+  # byte today's in that world.
+  def portal_mfa_challenge_user
+    return nil unless portal_password_delegation_available?
+
+    Mfa::PortalTokenService.new(token: params[:mfa_token]).verify_token
+  end
+
+  # Comvor Phase C: the portal verified the password and wants a second factor.
+  # Answer with a portal-flavoured challenge in exactly the shape
+  # handle_mfa_required produces, because that is what the app's MFA screen
+  # already consumes. No session token is issued here.
+  def render_portal_mfa_challenge
+    user = User.from_email(params[:email])
+    # No challenge can be minted without a user to mint it for. Falling back to
+    # the Phase B refusal keeps this fail-closed rather than 500ing.
+    return render_portal_totp_error if user.nil?
+
+    render json: {
+      mfa_required: true,
+      mfa_token: Mfa::PortalTokenService.new(user: user).generate_token
+    }, status: :partial_content
+  end
+
   def portal_password_verifier
     Internal::PortalPasswordVerifier.new(
       # Normalised exactly as User.from_email normalises, so the identity the
@@ -69,8 +139,10 @@ module Enterprise::DeviseOverrides::SessionsController
   # never shared with anyone — so a credential the portal has just confirmed
   # would still be rejected. This mirrors the OSS controller's
   # `sign_in_mfa_user`, which issues the session itself for the same reason.
-  def sign_in_portal_verified_user
-    user = User.from_email(params[:email])
+  # Phase C passes the user explicitly: the second leg of the challenge carries
+  # an mfa_token, and the identity comes from the token's claim rather than from
+  # an email field the client need not resend.
+  def sign_in_portal_verified_user(user = User.from_email(params[:email]))
     return render_saml_login_error if user.nil? || !user.active_for_authentication?
 
     # Delegation runs before `super`, so without this the OSS controller's
@@ -115,8 +187,11 @@ module Enterprise::DeviseOverrides::SessionsController
     }, status: :unauthorized
   end
 
-  # The portal reports totp_required only AFTER the password has verified, so
-  # this is not an oracle. Phase C is what makes these users work.
+  # Phase C moved the happy path off this message — a portal second factor is now
+  # answered with a challenge, not a refusal. It stays as the fail-closed answer
+  # for the case where delegation is on, the portal wants a second factor, and
+  # the fork cannot mint a challenge to carry it. The portal reports
+  # totp_required only AFTER the password has verified, so it is not an oracle.
   def render_portal_totp_error
     render json: {
       success: false,

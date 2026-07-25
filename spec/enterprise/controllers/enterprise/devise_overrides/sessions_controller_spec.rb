@@ -117,18 +117,6 @@ RSpec.describe DeviseOverrides::SessionsController, type: :controller do
       end
     end
 
-    context 'when the portal reports a second factor' do
-      it 'points the user at their comvor workspace' do
-        stub_verify({ ok: true, totp_required: true })
-
-        sign_in_with_portal_password
-
-        expect(response).to have_http_status(:unauthorized)
-        expect(response.parsed_body['message']).to eq(I18n.t('messages.login_portal_totp_user'))
-        expect(response.headers['access-token']).to be_nil
-      end
-    end
-
     context 'when the portal is unreachable' do
       it 'fails closed with a 401 rather than a 500' do
         stub_request(:post, verify_url).to_timeout
@@ -187,6 +175,180 @@ RSpec.describe DeviseOverrides::SessionsController, type: :controller do
 
         expect(response).to have_http_status(:unauthorized)
         expect(a_request(:post, verify_url)).not_to have_been_made
+      end
+    end
+  end
+
+  # Comvor Phase C. Phase B refused a portal second factor outright; the fork now
+  # carries it, by answering with an mfa challenge the app's existing MFA screen
+  # already knows how to render, then verifying the code against the portal.
+  describe 'POST #create with a portal second factor' do
+    let(:totp_verify_url) { 'https://api.comvor.test/portal/api/v1/internal/fork/verify-totp' }
+    let(:portal_mfa_token) { Mfa::PortalTokenService.new(user: saml_user).generate_token }
+
+    def stub_totp(body, status: 200)
+      stub_request(:post, totp_verify_url).to_return(status: status, body: body.to_json)
+    end
+
+    def submit_code(params)
+      with_modified_env(portal_env) { post :create, params: params }
+    end
+
+    def signed_jwt(payload)
+      JWT.encode(payload, Rails.application.secret_key_base, 'HS256')
+    end
+
+    context 'when the portal reports a second factor at the password step' do
+      before { stub_verify({ ok: true, totp_required: true }) }
+
+      it 'answers with a challenge in the same shape the chatwoot mfa path produces' do
+        sign_in_with_portal_password
+
+        expect(response).to have_http_status(:partial_content)
+        expect(response.parsed_body['mfa_required']).to be(true)
+        expect(response.parsed_body['mfa_token']).to be_present
+      end
+
+      it 'issues no session whatsoever alongside the challenge' do
+        expect { sign_in_with_portal_password }.not_to(change { saml_user.reload.tokens.count })
+
+        expect(response.headers['access-token']).to be_nil
+        expect(response.parsed_body['data']).to be_nil
+      end
+
+      # The whole point of the separate flavour: the code that answers this
+      # challenge must be routed to the portal, and nothing else may be.
+      it 'mints a portal flavoured token, not a chatwoot one' do
+        sign_in_with_portal_password
+        minted = response.parsed_body['mfa_token']
+
+        expect(Mfa::PortalTokenService.new(token: minted).verify_token).to eq(saml_user)
+      end
+    end
+
+    context 'when the agent answers the challenge' do
+      it 'signs the user in on a code the portal accepts' do
+        stub_totp({ ok: true })
+
+        expect { submit_code(mfa_token: portal_mfa_token, otp_code: '123456') }
+          .to change { saml_user.reload.tokens.count }.by(1)
+
+        expect(response).to have_http_status(:success)
+        expect(response.headers['access-token']).to be_present
+      end
+
+      it 'sends the code with the identity from the token and the end user ip' do
+        stub_totp({ ok: true })
+        request.env['REMOTE_ADDR'] = '203.0.113.9'
+
+        submit_code(mfa_token: portal_mfa_token, otp_code: '123456')
+
+        expect(
+          a_request(:post, totp_verify_url).with(
+            body: { email: saml_user.email, code: '123456' }.to_json,
+            headers: { 'X-Comvor-Portal-Secret' => 'shhh', 'X-Comvor-Client-IP' => '203.0.113.9' }
+          )
+        ).to have_been_made
+      end
+
+      # Losing an authenticator must not kill the app path, so the app's backup
+      # code field is backed by the portal's recovery codes. The fork does not
+      # care which is which — the portal tries TOTP then recovery.
+      it 'accepts a recovery code supplied in the backup_code field' do
+        stub_totp({ ok: true })
+
+        submit_code(mfa_token: portal_mfa_token, backup_code: 'RECOVERY-1234')
+
+        expect(response).to have_http_status(:success)
+        expect(
+          a_request(:post, totp_verify_url).with(body: { email: saml_user.email, code: 'RECOVERY-1234' }.to_json)
+        ).to have_been_made
+      end
+
+      # Same key and same status as the OSS path renders for a bad code
+      # (spec/controllers/devise_overrides/sessions_controller_spec.rb), so a
+      # portal-backed failure is indistinguishable from a Chatwoot one.
+      it 'refuses a code the portal rejects with the generic mfa error' do
+        stub_totp({ ok: false })
+
+        submit_code(mfa_token: portal_mfa_token, otp_code: '000000')
+
+        expect(response).to have_http_status(:bad_request)
+        expect(response.parsed_body['error']).to eq(I18n.t('errors.mfa.invalid_code'))
+        expect(response.headers['access-token']).to be_nil
+      end
+
+      it 'never asks the portal to verify an empty code' do
+        submit_code(mfa_token: portal_mfa_token)
+
+        expect(response.parsed_body['error']).to eq(I18n.t('errors.mfa.invalid_code'))
+        expect(a_request(:post, totp_verify_url)).not_to have_been_made
+      end
+    end
+
+    context 'when the portal is unreachable at the code step' do
+      it 'fails closed rather than erroring or signing anyone in' do
+        stub_request(:post, totp_verify_url).to_timeout
+
+        submit_code(mfa_token: portal_mfa_token, otp_code: '123456')
+
+        expect(response.status).to be < 500
+        expect(response.parsed_body['error']).to eq(I18n.t('errors.mfa.invalid_code'))
+        expect(response.headers['access-token']).to be_nil
+      end
+
+      it 'fails closed on a non 200 answer' do
+        stub_totp({ ok: true }, status: 500)
+
+        submit_code(mfa_token: portal_mfa_token, otp_code: '123456')
+
+        expect(response.status).to be < 500
+        expect(response.parsed_body['error']).to eq(I18n.t('errors.mfa.invalid_code'))
+        expect(response.headers['access-token']).to be_nil
+      end
+    end
+
+    context 'with a challenge that is not a live portal one' do
+      it 'refuses an expired challenge without calling the portal' do
+        expired = signed_jwt(user_id: saml_user.id, exp: 1.minute.ago.to_i, portal_totp: true)
+
+        submit_code(mfa_token: expired, otp_code: '123456')
+
+        expect(response).to have_http_status(:unauthorized)
+        expect(response.parsed_body['error']).to eq(I18n.t('errors.mfa.invalid_token'))
+        expect(a_request(:post, totp_verify_url)).not_to have_been_made
+      end
+
+      # The claim is the only discriminator, so a token without it is not a
+      # portal challenge no matter whose user id it names.
+      it 'refuses a token whose portal claim has been stripped, without calling the portal' do
+        claimless = signed_jwt(user_id: saml_user.id, exp: 5.minutes.from_now.to_i)
+
+        submit_code(mfa_token: claimless, otp_code: '123456')
+
+        expect(response.headers['access-token']).to be_nil
+        expect(a_request(:post, totp_verify_url)).not_to have_been_made
+      end
+
+      # A chatwoot-flavoured token decodes with the same key, so only the claim
+      # check keeps Chatwoot's own MFA path untouched.
+      it 'leaves a chatwoot flavoured challenge entirely on the oss path' do
+        chatwoot_token = Mfa::TokenService.new(user: saml_user).generate_token
+
+        submit_code(mfa_token: chatwoot_token, otp_code: '000000')
+
+        expect(response).to have_http_status(:bad_request)
+        expect(response.parsed_body['error']).to eq(I18n.t('errors.mfa.invalid_code'))
+        expect(a_request(:post, totp_verify_url)).not_to have_been_made
+      end
+
+      it 'ignores a portal challenge entirely when delegation is off' do
+        token = portal_mfa_token
+
+        post :create, params: { mfa_token: token, otp_code: '123456' }
+
+        expect(response.headers['access-token']).to be_nil
+        expect(a_request(:post, totp_verify_url)).not_to have_been_made
       end
     end
   end
