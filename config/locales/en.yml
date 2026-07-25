@@ -48,6 +48,7 @@ en:
     reset_password: Request for password reset is successful. A email with instructions will be sent to your email if it exists.
     reset_password_saml_user: Your password is managed by Comvor. Reset it at app.comvor.com/forgot-password.
     login_saml_user: This account uses SAML authentication. Please sign in through your organization's SAML provider.
+    login_portal_totp_user: Your Comvor account uses two-factor authentication, which this sign-in form does not support yet. Open your workspace at app.comvor.com and use the link there to sign in to the app.
     saml_not_available: SAML authentication is not available in this installation.
     inbox_deletetion_response: Your inbox deletion request will be processed in some time.
 
