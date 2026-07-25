@@ -17,12 +17,12 @@ class Internal::PortalAgentSessionsController < ApplicationController
   def create
     return render_error('email required', :bad_request) if email.blank?
 
-    account = Account.find_by(id: params[:account_id])
+    account = Account.find_by(id: account_id)
     return render_error('account not found', :not_found) if account.nil?
     return render_error('saml not enabled for account', :forbidden) unless saml_usable?(account)
 
     user = SamlUserBuilder.new(auth_hash, account.id).perform
-    return render_error('user could not be provisioned', :unprocessable_entity) unless user&.persisted?
+    return render_error('user could not be provisioned', :unprocessable_entity) unless user.persisted?
 
     # The deep link is a live credential: never logged, never persisted here.
     render json: { deep_link: user.generate_mobile_sso_deep_link }, status: :ok
@@ -49,16 +49,23 @@ class Internal::PortalAgentSessionsController < ApplicationController
   end
 
   # Mirrors exactly the pair Api::V1::AuthController#find_account_with_saml
-  # checks, so this deep link is precisely as capable as web SSO and no more.
+  # checks, plus the ENABLE_SAML_SSO_LOGIN kill switch web SSO initiation also
+  # gates on (see Api::V1::AuthController#saml_sso_enabled?), so this deep link
+  # is precisely as capable as web SSO and no more.
   # Without the check, minting against a non-SAML account would create a
   # provider:'saml' user there and the reset lockdown would then also block that
   # user's password login — a lockout with no SSO path to recover.
   def saml_usable?(account)
-    account.feature_enabled?('saml') && account.saml_enabled?
+    GlobalConfigService.load('ENABLE_SAML_SSO_LOGIN', 'true').to_s == 'true' &&
+      account.feature_enabled?('saml') && account.saml_enabled?
   end
 
   def email
     @email ||= params[:email].to_s.strip.downcase
+  end
+
+  def account_id
+    Integer(params[:account_id], exception: false)
   end
 
   # Mirrors what the portal IdP actually asserts (comvor-api
