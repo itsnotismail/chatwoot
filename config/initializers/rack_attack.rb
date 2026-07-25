@@ -164,6 +164,50 @@ class Rack::Attack
     req.ip if req.path_without_extentions == '/api/v1/accounts' && req.post?
   end
 
+  ## Comvor: portal -> fork mint endpoint (POST /internal/portal/agent_session).
+  ##
+  ## Keyed on account_id + email, deliberately NOT on ip. Every legitimate
+  ## request originates from the single comvor-api instance, so an ip key would
+  ## lump all merchants into one bucket — throttling real users the moment any
+  ## one of them got busy — while doing nothing to bound abuse of a particular
+  ## identity. (An ip key is also fragile here: the `trusted IPs` safelist above
+  ## short-circuits ALL throttles for 127.0.0.1/::1, so if comvor-api's request
+  ## ever presented as loopback the throttle would silently never fire.)
+  ##
+  ## The 32-byte shared secret is the primary defence; this is the blast-radius
+  ## bound if it ever leaks — it caps how fast an attacker could mint sessions
+  ## or enumerate which (account, email) pairs are valid. Set looser than the
+  ## portal's own 20/min per user so that in normal operation the portal is the
+  ## binding constraint and this is the backstop for anything bypassing it.
+  throttle('portal_agent_session/account_email', limit: 30, period: 1.minute) do |req|
+    if req.path_without_extentions == '/internal/portal/agent_session' && req.post?
+      # Params are read inside the `if`, and the read rescues StandardError.
+      # That breadth is deliberate, not laziness: this block runs in middleware
+      # BEFORE the endpoint's shared-secret check, so an unauthenticated caller
+      # fully controls the body and query string, and ANY exception escaping
+      # here becomes a 500 raised from inside Rack::Attack — a free error-noise
+      # generator for anyone who finds the path. Parsing attacker-controlled
+      # input has more failure modes than are worth enumerating: bad JSON raises
+      # ActionDispatch::Http::Parameters::ParseError, invalid UTF-8 raises
+      # ActionController::BadRequest, and a malformed query string raises
+      # Rack::QueryParser::ParameterTypeError — all three verified by hand
+      # against this block.
+      #
+      # Anything we cannot key precisely still gets bounded, just coarsely: all
+      # such requests share one bucket. Returning nil instead would leave
+      # malformed traffic entirely unthrottled, which is the opposite of what
+      # this throttle is for.
+      begin
+        params = ActionDispatch::Request.new(req.env).params
+        account_id = params['account_id'].presence
+        email = params['email'].to_s.downcase.gsub(/\s+/, '').presence
+        account_id.present? && email.present? ? "#{account_id}:#{email}" : 'unkeyable'
+      rescue StandardError
+        'unkeyable'
+      end
+    end
+  end
+
   ##-----------------------------------------------##
 
   ###-----------------------------------------------###
