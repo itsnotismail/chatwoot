@@ -76,14 +76,18 @@ export const deleteIndexedDBOnLogout = async () => {
   localStorage.removeItem('cw-idb-names');
 };
 
-export const clearCookiesOnLogout = () => {
+export const clearCookiesOnLogout = (redirectLink = null) => {
   emitter.emit(CHATWOOT_RESET);
   emitter.emit(ANALYTICS_RESET);
   clearBrowserSessionCookies();
   clearLocalStorageOnLogout();
   clearSessionStorageOnLogout();
   const globalConfig = window.globalConfig || {};
-  const logoutRedirectLink = globalConfig.LOGOUT_REDIRECT_LINK || '/';
+  // redirectLink lets a caller override the destination — used to route SAML
+  // users through the Comvor portal single-logout endpoint so their portal
+  // session is cleared too (it then lands them back on the login page).
+  const logoutRedirectLink =
+    redirectLink || globalConfig.LOGOUT_REDIRECT_LINK || '/';
   window.location = logoutRedirectLink;
 };
 

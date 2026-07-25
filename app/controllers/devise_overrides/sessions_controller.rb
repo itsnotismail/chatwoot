@@ -3,9 +3,21 @@ class DeviseOverrides::SessionsController < DeviseTokenAuth::SessionsController
   # Unpermitted parameter: session
   wrap_parameters format: []
   before_action :process_sso_auth_token, only: [:create]
+  # destroy is inherited from DeviseTokenAuth::SessionsController (not defined
+  # here), which the lexically-scoped-filter cop can't see.
+  before_action :capture_saml_logout_url, only: [:destroy] # rubocop:disable Rails/LexicallyScopedActionFilter
 
   def new
     redirect_to login_page_url(error: 'access-denied')
+  end
+
+  # Hand the SPA the Comvor portal single-logout URL on sign-out so a SAML
+  # user's portal session (comvor_session) is cleared alongside the Chatwoot
+  # one. Computed in a before_action because destroy tears down @resource/@token
+  # before this renders. Absent for non-SAML users (compacted out), so their
+  # logout is unchanged.
+  def render_destroy_success
+    render json: { success: true, saml_logout_url: @saml_logout_url }.compact, status: :ok
   end
 
   def create
@@ -24,6 +36,18 @@ class DeviseOverrides::SessionsController < DeviseTokenAuth::SessionsController
   end
 
   private
+
+  # The portal single-logout URL is derived from the account's SAML sso_url
+  # (same IdP host for every Comvor account), so any SAML-enabled account the
+  # user belongs to yields the correct endpoint.
+  def capture_saml_logout_url
+    return unless current_user&.provider == 'saml'
+
+    settings = current_user.accounts.filter_map(&:saml_settings).find(&:saml_enabled?)
+    return if settings&.sso_url.blank?
+
+    @saml_logout_url = settings.sso_url.sub(%r{/portal/saml/sso\z}, '/portal/saml/logout')
+  end
 
   def find_user_for_authentication
     return nil unless params[:email].present? && params[:password].present?
