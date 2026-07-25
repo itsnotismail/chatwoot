@@ -40,6 +40,10 @@ en:
     saml:
       invalid_email: 'Please enter a valid email address'
       authentication_failed: 'Authentication failed. Please check your credentials and try again.'
+  mobile_handoff:
+    title: "You're signed in"
+    body: 'Tap below to finish opening your workspace in the app.'
+    cta: 'Open the app'
   messages:
     reset_password: Request for password reset is successful. A email with instructions will be sent to your email if it exists.
     reset_password_saml_user: Your password is managed by Comvor. Reset it at app.comvor.com/forgot-password.

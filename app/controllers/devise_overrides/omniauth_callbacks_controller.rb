@@ -37,7 +37,16 @@ class DeviseOverrides::OmniauthCallbacksController < DeviseTokenAuth::OmniauthCa
     params = { email: encoded_email, sso_auth_token: @resource.generate_sso_auth_token }.to_query
 
     mobile_deep_link_base = GlobalConfigService.load('MOBILE_DEEP_LINK_BASE', 'chatwootapp')
-    redirect_to "#{mobile_deep_link_base}://auth/saml?#{params}", allow_other_host: true
+    @deep_link = "#{mobile_deep_link_base}://auth/saml?#{params}"
+
+    # Hand off with a tap rather than `redirect_to`: browsers refuse to launch
+    # an external app from a navigation they did not attribute to a user
+    # gesture, so a bare redirect to a custom scheme is silently dropped and
+    # the user is left staring at a blank page. The button below supplies that
+    # gesture. The page carries a one-time sso_auth_token, so it must not be
+    # cached.
+    response.headers['Cache-Control'] = 'no-store'
+    render 'devise_overrides/omniauth_callbacks/mobile_handoff', layout: false
   end
 
   def sign_up_user
