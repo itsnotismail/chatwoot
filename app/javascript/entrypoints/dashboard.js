@@ -11,6 +11,7 @@ import FloatingVue from 'floating-vue';
 import WootUiKit from 'dashboard/components';
 import App from 'dashboard/App.vue';
 import i18nMessages from 'dashboard/i18n';
+import { brandedPostTranslation } from 'shared/helpers/branding';
 import createAxios from 'dashboard/helper/APIHelper';
 
 import commonHelpers, { isJSONValid } from 'dashboard/helper/commons';
@@ -37,6 +38,11 @@ const i18n = createI18n({
   legacy: false, // https://github.com/intlify/vue-i18n/issues/1902
   locale: 'en',
   messages: i18nMessages,
+  // Comvor: brand every translated string with INSTALLATION_NAME. Upstream
+  // hardcodes "Chatwoot" in ~27 English strings and in each translated locale;
+  // doing the swap here covers all of them, in every language, and leaves the
+  // locale files untouched so upstream merges stay clean.
+  postTranslation: brandedPostTranslation,
 });
 
 sync(store, router);
