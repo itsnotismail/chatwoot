@@ -15,11 +15,11 @@ class Integrations::App
   end
 
   def description
-    I18n.t("integration_apps.#{params[:i18n_key]}.description")
+    branded(I18n.t("integration_apps.#{params[:i18n_key]}.description"))
   end
 
   def short_description
-    I18n.t("integration_apps.#{params[:i18n_key]}.short_description")
+    branded(I18n.t("integration_apps.#{params[:i18n_key]}.short_description"))
   end
 
   def logo
@@ -118,6 +118,22 @@ class Integrations::App
   end
 
   private
+
+  # Comvor: integration copy is upstream Chatwoot's and hardcodes "Chatwoot" in
+  # four descriptions rendered on the Integrations settings page. Substituting
+  # INSTALLATION_NAME here rather than editing config/locales/en.yml keeps the
+  # locale files identical to upstream (so merges stay clean) and covers every
+  # translated locale, not just English — the same reasoning as the frontend's
+  # vue-i18n postTranslation hook in app/javascript/shared/helpers/branding.js.
+  #
+  # Case-sensitive, matching that hook: it deliberately leaves lowercase
+  # chatwoot.com URLs in help copy pointing at real hosts.
+  def branded(text)
+    installation_name = GlobalConfigService.load('INSTALLATION_NAME', 'Chatwoot')
+    return text if text.blank? || installation_name.blank?
+
+    text.gsub('Chatwoot', installation_name)
+  end
 
   def shopify_enabled?(account)
     account.feature_enabled?('shopify_integration') && GlobalConfigService.load('SHOPIFY_CLIENT_ID', nil).present?

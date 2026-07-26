@@ -2,6 +2,7 @@ import { createApp } from 'vue';
 import { createI18n } from 'vue-i18n';
 
 import i18nMessages from 'dashboard/i18n';
+import { brandedPostTranslation } from 'shared/helpers/branding';
 import * as Sentry from '@sentry/vue';
 import {
   initializeAnalyticsEvents,
@@ -21,6 +22,10 @@ const i18n = createI18n({
   legacy: false, // https://github.com/intlify/vue-i18n/issues/1902
   locale: 'en',
   messages: i18nMessages,
+  // Comvor: same INSTALLATION_NAME branding as the dashboard entrypoint — v3
+  // loads the very same dashboard/i18n bundle, so without this the signup and
+  // password-reset screens would still say "Chatwoot".
+  postTranslation: brandedPostTranslation,
 });
 
 const app = createApp(App);
