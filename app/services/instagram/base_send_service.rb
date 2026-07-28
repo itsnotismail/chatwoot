@@ -29,12 +29,43 @@ class Instagram::BaseSendService < Base::SendOnChannelService
   def message_params
     params = {
       recipient: { id: contact.get_source_id(inbox.id) },
-      message: {
-        text: message.outgoing_content
-      }
+      message: instagram_message_payload
     }
 
     merge_human_agent_tag(params)
+  end
+
+  # Instagram quick replies. Mirrors Facebook::SendOnFacebookService's
+  # fb_text_message_payload (send_on_facebook_service.rb): both channels are
+  # Meta Messenger-shaped and take the same quick_replies structure, but
+  # upstream only ever implemented it for Facebook — confirmed still absent on
+  # master v4.16.2 (2026-07-28), so this is a fork addition. Both Instagram
+  # send services (Instagram::SendOnInstagramService and
+  # Instagram::Messenger::SendOnInstagramService) inherit this base, so one
+  # definition covers both.
+  #
+  # The `.any?` guard is the Facebook original's and is load-bearing: an
+  # input_select with an empty items list would otherwise produce
+  # quick_replies: [] and Meta rejects the send outright, losing the words.
+  # `.to_a.any?` rather than the original's bare `.any?` only because
+  # content_attributes['items'] can be nil here (Facebook's own call site is
+  # reached through a path that guarantees the key); nil.any? would raise
+  # inside perform_reply's rescue and surface as a silent send failure.
+  def instagram_message_payload
+    if message.content_type == 'input_select' && message.content_attributes['items'].to_a.any?
+      {
+        text: message.content,
+        quick_replies: message.content_attributes['items'].map do |item|
+          {
+            content_type: 'text',
+            payload: item['title'],
+            title: item['title']
+          }
+        end
+      }
+    else
+      { text: message.outgoing_content }
+    end
   end
 
   def attachment_message_params(attachment)
