@@ -278,6 +278,38 @@ RSpec.describe Message do
       create(:message, message_type: :outgoing, conversation: conversation)
       expect(conversation.reload.pending?).to be true
     end
+
+    context 'when the inbox has an active bot' do
+      before { create(:agent_bot_inbox, inbox: conversation.inbox, status: 'active') }
+
+      it 'opens a bot-handled conversation when an agent replies' do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: create(:user))
+        expect(conversation.reload.status).to eq('open')
+      end
+
+      it 'leaves it pending for a private note' do
+        create(:message, conversation: conversation, message_type: :outgoing,
+                          sender: create(:user), private: true)
+        expect(conversation.reload.status).to eq('pending')
+      end
+
+      it "leaves it pending for the bot's own reply" do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: create(:agent_bot))
+        expect(conversation.reload.status).to eq('pending')
+      end
+
+      # THE ONE THAT MATTERS. A bot reply carrying an image becomes TWO Meta sends
+      # that overwrite each other's source_id, so the attachment's echo never
+      # dedupes and returns as a new outgoing message with sender nil and
+      # external_echo true. human_response? accepts that through its external_echo
+      # arm, so without the sender check the bot would take the conversation over
+      # from ITSELF, on the retail happy path.
+      it "leaves it pending for an external echo of the bot's own message" do
+        create(:message, :bot_message, conversation: conversation, message_type: :outgoing,
+                          content_attributes: { external_echo: true })
+        expect(conversation.reload.status).to eq('pending')
+      end
+    end
   end
 
   describe '#waiting since' do
