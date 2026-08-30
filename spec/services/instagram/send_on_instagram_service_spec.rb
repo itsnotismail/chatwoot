@@ -105,6 +105,47 @@ describe Instagram::SendOnInstagramService do
           expect(message.reload.status).to eq('failed')
           expect(message.reload.external_error).to eq('400 - The Instagram account is restricted.')
         end
+
+        it 'sends an input_select message options as quick replies' do
+          message = create(:message, message_type: 'outgoing', inbox: instagram_inbox, account: account,
+                                     conversation: conversation, content: 'Shall I place it?',
+                                     content_type: 'input_select',
+                                     content_attributes: { items: [{ 'title' => 'Confirm order', 'value' => 'confirm_order' }] })
+
+          described_class.new(message: message).perform
+
+          expect(HTTParty).to have_received(:post).with(
+            anything,
+            hash_including(
+              body: hash_including(
+                message: hash_including(
+                  text: 'Shall I place it?',
+                  quick_replies: [{ content_type: 'text', payload: 'Confirm order', title: 'Confirm order' }]
+                )
+              )
+            )
+          )
+        end
+
+        # ContentAttributeValidator refuses to persist an input_select with no
+        # items, so this row has to skip validation to exist at all. That is
+        # the point: the `.to_a.any?` guard in the payload covers the rows
+        # validation cannot see (a legacy row, or anything written with
+        # validation bypassed), where a nil items list would otherwise raise
+        # inside perform_reply's rescue and silently lose the whole message.
+        it 'sends plain text when an input_select items list is missing' do
+          message = build(:message, message_type: 'outgoing', inbox: instagram_inbox, account: account,
+                                    conversation: conversation, content: 'Shall I place it?',
+                                    content_type: 'input_select', content_attributes: {})
+          message.save(validate: false)
+
+          described_class.new(message: message).perform
+
+          expect(HTTParty).to have_received(:post).with(
+            anything,
+            hash_including(body: hash_including(message: { text: 'Shall I place it?' }))
+          )
+        end
       end
 
       context 'with message_tag HUMAN_AGENT' do

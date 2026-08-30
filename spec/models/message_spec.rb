@@ -278,6 +278,13 @@ RSpec.describe Message do
       create(:message, message_type: :outgoing, conversation: conversation)
       expect(conversation.reload.pending?).to be true
     end
+
+    # The agent-bot-takeover behaviour (an agent's reply opening a bot-handled
+    # pending conversation) lives in Enterprise::Message#captain_pending_conversation?,
+    # which is prepended onto this class and always wins over the stub below.
+    # Its behavioural specs live in spec/enterprise/models/message_spec.rb
+    # alongside the rest of #mark_pending_conversation_as_open_for_human_response,
+    # so they exercise the code that actually runs.
   end
 
   describe '#waiting since' do
