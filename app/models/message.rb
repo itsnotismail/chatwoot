@@ -410,23 +410,8 @@ class Message < ApplicationRecord
     conversation.open!
   end
 
-  # A bot-handled conversation that a HUMAN AGENT has just replied into.
-  # Upstream stubs this to false; this platform uses it to hand the
-  # conversation from the agent bot to the person who started typing.
-  #
-  # sender.is_a?(User) is NOT redundant with human_response?, and it is the
-  # important part. human_response? also accepts content_attributes
-  # external_echo, which is set on Meta's echo of an outgoing message — and a
-  # bot reply carrying an image becomes two Meta sends that overwrite each
-  # other's source_id, so the attachment's echo never dedupes and arrives as a
-  # NEW outgoing message with a nil sender. Without this clause the bot would
-  # take conversations over from itself on the retail happy path.
-  #
-  # The cost is that a merchant replying from the native Instagram app does not
-  # auto-take-over. That is a MISSED takeover, i.e. the behaviour before this
-  # existed, and it costs nothing today: no Instagram inbox is connected.
   def captain_pending_conversation?
-    conversation.pending? && conversation.inbox.active_bot? && sender.is_a?(User)
+    false
   end
 
   def reopen_resolved_conversation
