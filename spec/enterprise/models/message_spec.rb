@@ -122,7 +122,7 @@ RSpec.describe Message do
       expect(Conversations::ActivityMessageJob).to have_been_enqueued.exactly(:once)
     end
 
-    it 'runs the takeover as the system and sends message_created before the status webhooks' do
+    it 'runs the takeover as the system and dispatches its status webhooks exactly once, before message_created' do
       agent = create(:user, account: conversation.account)
       agent_bot = create(:agent_bot, outgoing_url: 'https://bot.example.com/webhook')
       create(:agent_bot_inbox, inbox: conversation.inbox, agent_bot: agent_bot)
@@ -138,10 +138,11 @@ RSpec.describe Message do
       end.to have_enqueued_job(Conversations::ActivityMessageJob).exactly(:once)
       Current.user = nil
 
-      expect(events.first).to eq(['message_created', 'open', 1])
-      # Every later event (the takeover's three, plus the first-reply conversation_updated) carries the same revision.
-      expect(events.drop(1).map(&:first)).to include('conversation_opened', 'conversation_status_changed', 'conversation_updated')
-      expect(events.drop(1).map { |event| event.drop(1) }.uniq).to eq([['open', 1]])
+      names = events.map(&:first)
+      expect(names.count('conversation_opened')).to eq(1)
+      expect(names.count('conversation_status_changed')).to eq(1)
+      expect(names.index('conversation_status_changed')).to be < names.index('message_created')
+      expect(events.map { |event| event.drop(1) }.uniq).to eq([['open', 1]])
     end
 
     it 'leaves it pending for a private note' do

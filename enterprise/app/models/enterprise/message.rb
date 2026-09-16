@@ -23,7 +23,7 @@ module Enterprise::Message
 
     open_as_system(takeover)
     conversation.sync_takeover_status_from(takeover)
-    @opened_pending_conversation_for_human_response = true
+    @human_takeover_conversation = takeover
   end
 
   def open_as_system(takeover)
@@ -31,19 +31,23 @@ module Enterprise::Message
     previous_executed_by = Current.executed_by
     Current.user = nil
     Current.executed_by = nil
-    takeover.opened_by_human_takeover = true
+    takeover.human_takeover_callbacks = :deferred
     takeover.open!
   ensure
     Current.user = previous_user
     Current.executed_by = previous_executed_by
   end
 
-  # Called from the core after_create_commit chain; the status change itself already happened in
-  # open_pending_conversation_for_human_response, so only the activity job is left, and it is enqueued after commit.
+  # Called from the core after_create_commit chain, before message_created is dispatched. The status change itself
+  # committed with this message; what is left runs only after commit: the takeover's status webhooks, activity and
+  # assignment callbacks (dispatched exactly once, see Enterprise::Conversation#dispatch_human_takeover_callbacks)
+  # and the auto-open activity job.
   def mark_pending_conversation_as_open_for_human_response
-    return unless @opened_pending_conversation_for_human_response
+    takeover = @human_takeover_conversation
+    return if takeover.blank?
 
-    @opened_pending_conversation_for_human_response = false
+    @human_takeover_conversation = nil
+    takeover.dispatch_human_takeover_callbacks
     create_captain_auto_open_activity_message
   end
 

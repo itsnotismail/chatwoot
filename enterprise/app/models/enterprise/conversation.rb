@@ -1,7 +1,8 @@
 module Enterprise::Conversation
   attr_accessor :captain_activity_reason, :captain_activity_reason_type
-  # Set by Enterprise::Message when an agent reply opens a bot-pending conversation inside the reply's transaction.
-  attr_accessor :opened_by_human_takeover
+  # Set to :deferred by Enterprise::Message on the instance that opens a bot-pending conversation inside an agent reply's
+  # transaction; the reply's commit chain then runs this instance's commit callbacks exactly once (see below).
+  attr_accessor :human_takeover_callbacks
 
   def dispatch_captain_inference_resolved_event
     dispatch_captain_inference_event(Events::Types::CONVERSATION_CAPTAIN_INFERENCE_RESOLVED)
@@ -18,6 +19,28 @@ module Enterprise::Conversation
       self[attribute] = takeover[attribute]
       clear_attribute_change(attribute)
     end
+  end
+
+  # The takeover instance's own commit callbacks are unreliable: with run_commit_callbacks_on_first_saved_instances_in_transaction
+  # (load_defaults 7.0), they never run when another instance of the conversation was saved earlier in the same transaction
+  # (conversations#create with an initial agent message, channel builders). So they are skipped on that instance and
+  # the reply's commit chain runs them once, as the system, as they ran when the takeover saved on its own.
+  def dispatch_human_takeover_callbacks
+    return unless human_takeover_callbacks == :deferred
+
+    self.human_takeover_callbacks = :dispatched
+    previous_user = Current.user
+    previous_executed_by = Current.executed_by
+    Current.user = nil
+    Current.executed_by = nil
+    @dispatching_human_takeover_callbacks = true
+    execute_after_update_commit_callbacks
+    notify_assignment_change
+    process_assignment_changes
+  ensure
+    @dispatching_human_takeover_callbacks = false
+    Current.user = previous_user
+    Current.executed_by = previous_executed_by
   end
 
   def list_of_keys
@@ -49,22 +72,20 @@ module Enterprise::Conversation
 
   private
 
-  # The takeover's status change commits with the agent's reply, while Current.user is the agent again. Run its commit
-  # callbacks (status webhooks, activity, action cable) as the system, as they ran when the takeover saved on its own.
   def execute_after_update_commit_callbacks
-    return super unless opened_by_human_takeover
+    super unless skip_human_takeover_callback?
+  end
 
-    self.opened_by_human_takeover = false
-    previous_user = Current.user
-    previous_executed_by = Current.executed_by
-    Current.user = nil
-    Current.executed_by = nil
-    begin
-      super
-    ensure
-      Current.user = previous_user
-      Current.executed_by = previous_executed_by
-    end
+  def notify_assignment_change
+    super unless skip_human_takeover_callback?
+  end
+
+  def process_assignment_changes
+    super unless skip_human_takeover_callback?
+  end
+
+  def skip_human_takeover_callback?
+    human_takeover_callbacks.present? && !@dispatching_human_takeover_callbacks
   end
 
   def dispatch_captain_inference_event(event_name)
