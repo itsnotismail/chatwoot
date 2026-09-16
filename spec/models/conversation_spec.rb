@@ -412,6 +412,26 @@ RSpec.describe Conversation do
       expect(conversation.reload.slice(:status, :status_revision)).to eq('status' => 'open', 'status_revision' => 5)
     end
 
+    it 'increments through a bulk status update' do
+      agent = create(:user, account: conversation.account, role: :agent)
+      create(:inbox_member, inbox: conversation.inbox, user: agent)
+      params = { type: 'Conversation', fields: { status: 'resolved' }, ids: [conversation.display_id] }
+
+      BulkActionsJob.perform_now(account: conversation.account, params: params, user: agent)
+
+      expect(conversation.reload.slice(:status, :status_revision)).to eq('status' => 'resolved', 'status_revision' => 1)
+    end
+
+    it 'increments through automation rule status actions' do
+      rule = create(:automation_rule, account: conversation.account,
+                                      actions: [{ action_name: 'resolve_conversation', action_params: [] },
+                                                { action_name: 'change_status', action_params: ['pending'] }])
+
+      AutomationRules::ActionService.new(rule, conversation.account, conversation).perform
+
+      expect(conversation.reload.slice(:status, :status_revision)).to eq('status' => 'pending', 'status_revision' => 2)
+    end
+
     it 'carries the committed revision in the agent bot status webhook' do
       agent_bot = create(:agent_bot, outgoing_url: 'https://bot.example.com/webhook')
       create(:agent_bot_inbox, inbox: conversation.inbox, agent_bot: agent_bot)
