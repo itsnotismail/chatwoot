@@ -1,26 +1,50 @@
 module Enterprise::Message
+  def self.prepended(base)
+    # Runs inside the message's insert transaction, so the takeover's row lock and status_revision bump commit together
+    # with the human reply. A bot create guarded by expected_status_revision therefore either commits before this
+    # reply (and the takeover lands after it) or sees the bumped revision; it can no longer slip in between the reply
+    # committing and the conversation opening.
+    base.after_create :open_pending_conversation_for_human_response
+  end
+
   private
 
-  def mark_pending_conversation_as_open_for_human_response
+  def open_pending_conversation_for_human_response
     return unless captain_pending_conversation?
     return unless human_response?
     return if private?
     return if template_bootstrap_message?
 
+    # A separate instance, so the message's after_create_commit updates to the association instance (waiting_since,
+    # first_reply_created_at) cannot overwrite the saved status change before its commit callbacks run.
+    takeover = ::Conversation.find(conversation_id)
+    takeover.lock!
+    return unless takeover.pending?
+
+    open_as_system(takeover)
+    conversation.sync_takeover_status_from(takeover)
+    @opened_pending_conversation_for_human_response = true
+  end
+
+  def open_as_system(takeover)
     previous_user = Current.user
     previous_executed_by = Current.executed_by
     Current.user = nil
     Current.executed_by = nil
+    takeover.opened_by_human_takeover = true
+    takeover.open!
+  ensure
+    Current.user = previous_user
+    Current.executed_by = previous_executed_by
+  end
 
-    begin
-      conversation.open!
-      return unless conversation.saved_change_to_status?
+  # Called from the core after_create_commit chain; the status change itself already happened in
+  # open_pending_conversation_for_human_response, so only the activity job is left, and it is enqueued after commit.
+  def mark_pending_conversation_as_open_for_human_response
+    return unless @opened_pending_conversation_for_human_response
 
-      create_captain_auto_open_activity_message
-    ensure
-      Current.user = previous_user
-      Current.executed_by = previous_executed_by
-    end
+    @opened_pending_conversation_for_human_response = false
+    create_captain_auto_open_activity_message
   end
 
   def captain_pending_conversation?

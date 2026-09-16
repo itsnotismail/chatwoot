@@ -109,6 +109,41 @@ RSpec.describe Message do
       end.to change { conversation.reload.status_revision }.by(1)
     end
 
+    it 'opens the conversation and bumps its revision inside the reply transaction, before commit' do
+      in_transaction = nil
+
+      ActiveRecord::Base.transaction do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: create(:user))
+        in_transaction = Conversation.where(id: conversation.id).pick(:status, :status_revision)
+        expect(Conversations::ActivityMessageJob).not_to have_been_enqueued
+      end
+
+      expect(in_transaction).to eq(['open', 1])
+      expect(Conversations::ActivityMessageJob).to have_been_enqueued.exactly(:once)
+    end
+
+    it 'runs the takeover as the system and sends message_created before the status webhooks' do
+      agent = create(:user, account: conversation.account)
+      agent_bot = create(:agent_bot, outgoing_url: 'https://bot.example.com/webhook')
+      create(:agent_bot_inbox, inbox: conversation.inbox, agent_bot: agent_bot)
+      events = []
+      allow(AgentBots::WebhookJob).to receive(:perform_later) do |_url, payload, *|
+        conversation_data = payload[:conversation] || payload
+        events << [payload[:event], conversation_data[:status], conversation_data[:status_revision]]
+      end
+
+      Current.user = agent
+      expect do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent)
+      end.to have_enqueued_job(Conversations::ActivityMessageJob).exactly(:once)
+      Current.user = nil
+
+      expect(events.first).to eq(['message_created', 'open', 1])
+      # Every later event (the takeover's three, plus the first-reply conversation_updated) carries the same revision.
+      expect(events.drop(1).map(&:first)).to include('conversation_opened', 'conversation_status_changed', 'conversation_updated')
+      expect(events.drop(1).map { |event| event.drop(1) }.uniq).to eq([['open', 1]])
+    end
+
     it 'leaves it pending for a private note' do
       create(:message, conversation: conversation, message_type: :outgoing,
                         sender: create(:user), private: true)
