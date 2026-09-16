@@ -238,6 +238,69 @@ RSpec.describe 'Conversation Messages API', type: :request do
     end
   end
 
+  describe 'POST /api/v1/accounts/{account.id}/conversations/<id>/messages with expected_status_revision' do
+    let!(:inbox) { create(:inbox, account: account) }
+    let!(:agent_bot) { create(:agent_bot) }
+    let!(:conversation) { create(:conversation, inbox: inbox, account: account, status: :pending) }
+    let(:bot_headers) { { api_access_token: agent_bot.access_token.token } }
+    let(:messages_url) { api_v1_account_conversation_messages_url(account_id: account.id, conversation_id: conversation.display_id) }
+
+    before do
+      create(:agent_bot_inbox, inbox: inbox, agent_bot: agent_bot)
+      conversation.open!
+      conversation.pending!
+    end
+
+    it 'creates the message under a conversation row lock when the revision still matches' do
+      locking_queries = []
+      callback = lambda { |*, payload|
+        locking_queries << payload[:sql] if payload[:sql].match?(/FROM "conversations".*FOR UPDATE/m)
+      }
+
+      ActiveSupport::Notifications.subscribed(callback, 'sql.active_record') do
+        expect do
+          post messages_url, params: { content: 'your order is confirmed', expected_status_revision: 2 }, headers: bot_headers, as: :json
+        end.to have_enqueued_job(SendReplyJob).exactly(:once)
+      end
+
+      expect(response).to have_http_status(:success)
+      expect(conversation.messages.count).to eq(1)
+      expect(locking_queries.size).to eq(1)
+    end
+
+    it 'returns 409 with the current ownership and creates nothing when the revision moved' do
+      conversation.open!
+
+      expect do
+        post messages_url, params: { content: 'your order is confirmed', expected_status_revision: 2 }, headers: bot_headers, as: :json
+      end.not_to have_enqueued_job(SendReplyJob)
+
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body).to eq('error' => 'status_revision_mismatch', 'status' => 'open', 'status_revision' => 3)
+      expect(conversation.messages.count).to eq(0)
+    end
+
+    it 'replays an already-created message even after the revision moved' do
+      params = { content: 'your order is confirmed', expected_status_revision: 2, client_idempotency_key: 'intent-7' }
+      post messages_url, params: params, headers: bot_headers, as: :json
+      first_id = response.parsed_body['id']
+      conversation.open!
+
+      post messages_url, params: params, headers: bot_headers, as: :json
+
+      expect(response).to have_http_status(:success)
+      expect(response.parsed_body['id']).to eq(first_id)
+      expect(conversation.messages.count).to eq(1)
+    end
+
+    it 'rejects a revision that is not an integer' do
+      post messages_url, params: { content: 'hello', expected_status_revision: 'two' }, headers: bot_headers, as: :json
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(conversation.messages.count).to eq(0)
+    end
+  end
+
   describe 'GET /api/v1/accounts/{account.id}/conversations/:id/messages' do
     let(:conversation) { create(:conversation, account: account) }
 
