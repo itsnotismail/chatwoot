@@ -39,10 +39,12 @@ module AccessTokenAuthHelper
     BOT_ACCESSIBLE_ENDPOINTS.fetch(params[:controller], []).include?(params[:action])
   end
 
-  # Users are scoped by their own policies; an agent bot only by the inboxes it is connected to.
+  # Users are scoped by their own policies; an agent bot only by its active inbox connections, as AgentBotListener
+  # delivers webhooks only for those. Any other principal is refused.
   def agent_bot_connected_to_inbox?(inbox)
-    return true unless Current.user.is_a?(AgentBot)
+    return true if Current.user.is_a?(User)
+    return false unless Current.user.is_a?(AgentBot)
 
-    Current.user.agent_bot_inboxes.exists?(inbox_id: inbox.id)
+    Current.user.agent_bot_inboxes.active.exists?(inbox_id: inbox.id)
   end
 end

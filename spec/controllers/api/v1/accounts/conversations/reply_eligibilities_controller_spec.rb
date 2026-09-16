@@ -56,6 +56,14 @@ RSpec.describe 'Conversation reply eligibility API', type: :request do
     end
 
     context 'when it is an agent bot outside its scope' do
+      it 'returns not found when the bot connection to the inbox is inactive' do
+        create(:agent_bot_inbox, inbox: inbox, agent_bot: agent_bot, status: :inactive)
+
+        get eligibility_url(conversation), headers: bot_headers, as: :json
+
+        expect(response).to have_http_status(:not_found)
+      end
+
       it 'returns not found for a conversation in an inbox the bot is not connected to' do
         create(:agent_bot_inbox, inbox: create(:channel_api, account: account).inbox, agent_bot: agent_bot)
 
@@ -82,6 +90,19 @@ RSpec.describe 'Conversation reply eligibility API', type: :request do
         get eligibility_url(foreign, account_id: foreign.account_id), headers: bot_headers, as: :json
 
         expect(response).to have_http_status(:unauthorized)
+      end
+    end
+
+    context 'when it is an administrator of another account' do
+      it 'returns not found for that account\'s conversation display_id under their own account path' do
+        other_account = create(:account)
+        admin = create(:user, account: other_account, role: :administrator)
+        expect(other_account.conversations.find_by(display_id: conversation.display_id)).to be_nil
+
+        get eligibility_url(conversation, account_id: other_account.id), headers: admin.create_new_auth_token, as: :json
+
+        expect(response).to have_http_status(:not_found)
+        expect(response.parsed_body.keys).to eq(['error'])
       end
     end
 

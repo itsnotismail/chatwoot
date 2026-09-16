@@ -104,6 +104,14 @@ RSpec.describe 'Inbox delivery profile API', type: :request do
     end
 
     context 'when it is an agent bot outside its scope' do
+      it 'returns not found when the bot connection to the inbox is inactive' do
+        create(:agent_bot_inbox, inbox: inbox, agent_bot: agent_bot, status: :inactive)
+
+        get profile_url(inbox.id), headers: bot_headers, as: :json
+
+        expect(response).to have_http_status(:not_found)
+      end
+
       it 'returns not found for an inbox of the same account the bot is not connected to' do
         other_inbox = create(:channel_api, account: account).inbox
         create(:agent_bot_inbox, inbox: other_inbox, agent_bot: agent_bot)
@@ -130,6 +138,18 @@ RSpec.describe 'Inbox delivery profile API', type: :request do
         get profile_url(foreign_inbox.id, account_id: foreign_inbox.account_id), headers: bot_headers, as: :json
 
         expect(response).to have_http_status(:unauthorized)
+      end
+    end
+
+    context 'when it is an administrator of another account' do
+      it 'returns not found for that account\'s inbox id under their own account path' do
+        other_account = create(:account)
+        admin = create(:user, account: other_account, role: :administrator)
+
+        get profile_url(inbox.id, account_id: other_account.id), headers: admin.create_new_auth_token, as: :json
+
+        expect(response).to have_http_status(:not_found)
+        expect(response.body).not_to include('order_shipped')
       end
     end
 
