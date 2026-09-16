@@ -403,6 +403,20 @@ RSpec.describe Message do
       expect(message.webhook_data.key?(:attachments)).to be true
     end
 
+    it 'contains the delivery status' do
+      message = create(:message, message_type: :outgoing, status: :failed, external_error: '131047: Re-engagement message')
+
+      expect(message.webhook_data).to include(status: 'failed', content_attributes: include(external_error: '131047: Re-engagement message'))
+    end
+
+    it 'contains the client idempotency key only when the message has one' do
+      keyed = create(:message, message_type: :outgoing, client_idempotency_key: 'intent-1')
+      unkeyed = create(:message, message_type: :outgoing)
+
+      expect(keyed.webhook_data[:client_idempotency_key]).to eq('intent-1')
+      expect(unkeyed.webhook_data).not_to have_key(:client_idempotency_key)
+    end
+
     it 'does not contain the message attachment when attachment is not present' do
       message = create(:message)
       expect(message.webhook_data.key?(:attachments)).to be false

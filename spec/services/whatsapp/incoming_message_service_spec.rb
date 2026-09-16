@@ -158,6 +158,27 @@ describe Whatsapp::IncomingMessageService do
         expect(message.external_error).to eq('123: abc')
       end
 
+      it 'tells the inbox agent bot an outgoing message failed, with the status and error' do
+        agent_bot = create(:agent_bot, outgoing_url: 'https://bot.example.com/webhook')
+        create(:agent_bot_inbox, inbox: whatsapp_channel.inbox, agent_bot: agent_bot)
+        conversation = Message.find_by!(source_id: from).conversation
+        outgoing = create(:message, message_type: :outgoing, conversation: conversation, account: conversation.account,
+                                    inbox: conversation.inbox, source_id: 'wamid.outgoing-1')
+        status_params = {
+          'statuses' => [{ 'recipient_id' => from, 'id' => 'wamid.outgoing-1', 'status' => 'failed',
+                           'errors' => [{ 'code': 131_047, 'title': 'Re-engagement message' }] }]
+        }.with_indifferent_access
+        payloads = []
+        allow(AgentBots::WebhookJob).to receive(:perform_later) { |url, payload, *| payloads << [url, payload] }
+
+        described_class.new(inbox: whatsapp_channel.inbox, params: status_params).perform
+
+        url, payload = payloads.find { |_, data| data[:event] == 'message_updated' && data[:id] == outgoing.id }
+        expect(url).to eq(agent_bot.outgoing_url)
+        expect(payload[:status]).to eq('failed')
+        expect(payload[:content_attributes][:external_error]).to eq('131047: Re-engagement message')
+      end
+
       it 'will not throw error if unsupported status' do
         status_params = {
           'statuses' => [{ 'recipient_id' => from, 'id' => from, 'status' => 'deleted',
