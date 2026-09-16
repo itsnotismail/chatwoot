@@ -145,6 +145,22 @@ RSpec.describe Message do
       expect(events.map { |event| event.drop(1) }.uniq).to eq([['open', 1]])
     end
 
+    it 'shows an assignee set by in-transaction auto-assignment in the message_created payload' do
+      agent = create(:user, account: conversation.account)
+      create(:inbox_member, inbox: conversation.inbox, user: agent)
+      allow(AutoAssignment::AgentAssignmentService).to receive(:new) do |conversation:, **|
+        instance_double(AutoAssignment::AgentAssignmentService, perform: conversation.update!(assignee: agent))
+      end
+      payloads = []
+      allow(Rails.configuration.dispatcher).to receive(:dispatch) do |event, _time, data|
+        payloads << [event, data[:message].conversation.assignee_id] if event == Message::MESSAGE_CREATED
+      end
+
+      create(:message, conversation: conversation, message_type: :outgoing, sender: agent)
+
+      expect(payloads).to eq([[Message::MESSAGE_CREATED, agent.id]])
+    end
+
     it 'leaves it pending for a private note' do
       create(:message, conversation: conversation, message_type: :outgoing,
                         sender: create(:user), private: true)

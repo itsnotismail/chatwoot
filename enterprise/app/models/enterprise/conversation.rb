@@ -15,7 +15,8 @@ module Enterprise::Conversation
   # Mirror a takeover saved on another instance of this row without marking this one dirty, so payloads built from it
   # show the open conversation and a later save of it does not rewrite the status (or bump status_revision again).
   def sync_takeover_status_from(takeover)
-    %w[status status_revision updated_at].each do |attribute|
+    # assignee fields: opening can run legacy auto-assignment (after_save) inside the same transaction.
+    %w[status status_revision updated_at assignee_id assignee_agent_bot_id].each do |attribute|
       self[attribute] = takeover[attribute]
       clear_attribute_change(attribute)
     end
