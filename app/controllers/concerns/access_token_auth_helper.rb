@@ -2,7 +2,9 @@ module AccessTokenAuthHelper
   BOT_ACCESSIBLE_ENDPOINTS = {
     'api/v1/accounts/conversations' => %w[toggle_status toggle_typing_status toggle_priority create update custom_attributes],
     'api/v1/accounts/conversations/messages' => %w[index create],
-    'api/v1/accounts/conversations/assignments' => ['create']
+    'api/v1/accounts/conversations/assignments' => ['create'],
+    'api/v1/accounts/conversations/reply_eligibilities' => ['show'],
+    'api/v1/accounts/inboxes/delivery_profiles' => ['show']
   }.freeze
 
   def ensure_access_token
@@ -35,5 +37,12 @@ module AccessTokenAuthHelper
 
   def agent_bot_accessible?
     BOT_ACCESSIBLE_ENDPOINTS.fetch(params[:controller], []).include?(params[:action])
+  end
+
+  # Users are scoped by their own policies; an agent bot only by the inboxes it is connected to.
+  def agent_bot_connected_to_inbox?(inbox)
+    return true unless Current.user.is_a?(AgentBot)
+
+    Current.user.agent_bot_inboxes.exists?(inbox_id: inbox.id)
   end
 end
