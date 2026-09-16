@@ -10,6 +10,9 @@ RSpec.describe 'Conversation Messages API expected_status_revision locking', typ
   let!(:agent_bot) { create(:agent_bot, account: account) }
   let!(:conversation) { create(:conversation, inbox: inbox, account: account, status: :pending) }
   let(:path) { "/api/v1/accounts/#{account.id}/conversations/#{conversation.display_id}/messages" }
+  # Every barrier and thread is registered so a failing or hanging example still releases and joins them.
+  let(:releases) { [] }
+  let(:threads) { [] }
 
   before do
     create(:agent_bot_inbox, inbox: inbox, agent_bot: agent_bot)
@@ -19,6 +22,9 @@ RSpec.describe 'Conversation Messages API expected_status_revision locking', typ
   end
 
   after do
+    releases.each { |queue| queue << true }
+    threads.each { |thread| thread.join(10) }
+    ContactInbox.where(inbox_id: inbox.id).delete_all
     ActiveRecord::Base.connection.tables.each do |table|
       next unless ActiveRecord::Base.connection.column_exists?(table, :account_id)
 
@@ -38,13 +44,31 @@ RSpec.describe 'Conversation Messages API expected_status_revision locking', typ
     [status, JSON.parse(body_text)]
   end
 
+  def barrier
+    Queue.new.tap { |queue| releases << queue }
+  end
+
+  def spawn(&)
+    Thread.new(&).tap { |thread| threads << thread }
+  end
+
+  # Fails the example instead of hanging it when a regression means the other side never arrives.
+  def pop!(queue)
+    queue.pop(timeout: 10) || raise('timed out waiting on a concurrency barrier')
+  end
+
+  def value!(thread)
+    thread.join(10) || raise('timed out waiting for a concurrent request')
+    thread.value
+  end
+
   # Holds the guarded create after its revision check and before its insert (MessageBuilder#perform runs there).
   def hold_guarded_create_before_insert(reached, release)
     allow(Messages::MessageBuilder).to receive(:new).and_wrap_original do |original, *args, **kwargs|
       original.call(*args, **kwargs).tap do |builder|
         allow(builder).to receive(:perform).and_wrap_original do |perform|
           reached << true
-          release.pop
+          pop!(release)
           perform.call
         end
       end
@@ -54,7 +78,7 @@ RSpec.describe 'Conversation Messages API expected_status_revision locking', typ
   it 'makes a concurrent status change wait until the guarded message has committed' do
     revision = conversation.reload.status_revision
     reached = Queue.new
-    release = Queue.new
+    release = barrier
     statements = Queue.new
     hold_guarded_create_before_insert(reached, release)
 
@@ -62,13 +86,13 @@ RSpec.describe 'Conversation Messages API expected_status_revision locking', typ
       statements << [payload[:sql], Time.now.to_f] if Thread.current[:guarded_create]
     end
 
-    guarded = Thread.new do
+    guarded = spawn do
       Thread.current[:guarded_create] = true
       guarded_post(content: 'your order is confirmed', expected_status_revision: revision)
     end
-    reached.pop
+    pop!(reached)
 
-    takeover = Thread.new do
+    takeover = spawn do
       Rails.application.executor.wrap do
         Conversation.find(conversation.id).open!
         Time.now.to_f
@@ -80,8 +104,8 @@ RSpec.describe 'Conversation Messages API expected_status_revision locking', typ
     release << true
     expect(takeover_blocked).to be(true) # the status change waited on the row lock the guarded create holds
 
-    status, body = guarded.value
-    takeover_done_at = takeover.value
+    status, body = value!(guarded)
+    takeover_done_at = value!(takeover)
     ActiveSupport::Notifications.unsubscribe(subscriber)
 
     expect([status, Message.exists?(body['id'])]).to eq([200, true])
@@ -103,28 +127,28 @@ RSpec.describe 'Conversation Messages API expected_status_revision locking', typ
   it 'refuses the guarded message when a status change commits while it waits for the lock' do
     revision = conversation.reload.status_revision
     locked = Queue.new
-    release = Queue.new
+    release = barrier
 
-    takeover = Thread.new do
+    takeover = spawn do
       Rails.application.executor.wrap do
         Conversation.transaction do
           owner = Conversation.find(conversation.id)
           owner.lock!
           owner.open!
           locked << true
-          release.pop
+          pop!(release)
         end
       end
     end
-    locked.pop
+    pop!(locked)
 
-    guarded = Thread.new { guarded_post(content: 'your order is confirmed', expected_status_revision: revision) }
+    guarded = spawn { guarded_post(content: 'your order is confirmed', expected_status_revision: revision) }
     sleep 0.5
     guarded_blocked = guarded.alive?
     release << true
     expect(guarded_blocked).to be(true) # the guarded create waited for the conversation row lock
-    takeover.join
-    status, body = guarded.value
+    value!(takeover)
+    status, body = value!(guarded)
 
     expect(status).to eq(409)
     expect(body).to eq('error' => 'status_revision_mismatch', 'status' => 'open', 'status_revision' => revision + 1)
