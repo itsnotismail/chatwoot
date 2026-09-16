@@ -386,6 +386,18 @@ RSpec.describe 'Conversations API', type: :request do
           expect(account.conversations.find_by(display_id: response_data[:id]).messages.outgoing.first.content).to eq 'hi'
         end
 
+        it 'does not store a client_idempotency_key passed inside the initial message' do
+          allow(Rails.configuration.dispatcher).to receive(:dispatch)
+          post "/api/v1/accounts/#{account.id}/conversations",
+               headers: agent.create_new_auth_token,
+               params: { source_id: contact_inbox.source_id, message: { content: 'hi', client_idempotency_key: 'intent-1' } },
+               as: :json
+
+          expect(response).to have_http_status(:success)
+          message = account.conversations.find_by(display_id: response.parsed_body['id']).messages.outgoing.first
+          expect(message.client_idempotency_key).to be_nil
+        end
+
         it 'calls contact inbox builder if contact_id and inbox_id is present' do
           builder = double
           allow(Rails.configuration.dispatcher).to receive(:dispatch)

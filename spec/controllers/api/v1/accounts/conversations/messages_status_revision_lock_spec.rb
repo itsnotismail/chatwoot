@@ -40,8 +40,8 @@ RSpec.describe 'Conversation Messages API expected_status_revision locking', typ
 
   # Holds the guarded create after its revision check and before its insert (MessageBuilder#perform runs there).
   def hold_guarded_create_before_insert(reached, release)
-    allow(Messages::MessageBuilder).to receive(:new).and_wrap_original do |original, *args|
-      original.call(*args).tap do |builder|
+    allow(Messages::MessageBuilder).to receive(:new).and_wrap_original do |original, *args, **kwargs|
+      original.call(*args, **kwargs).tap do |builder|
         allow(builder).to receive(:perform).and_wrap_original do |perform|
           reached << true
           release.pop

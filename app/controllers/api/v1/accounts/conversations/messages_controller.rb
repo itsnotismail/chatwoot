@@ -11,7 +11,8 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
     @message = idempotent_message
     return if @message.present?
 
-    if params[:expected_status_revision].present?
+    # key?, not present?: a null, false or blank revision is a malformed guard (422), never an unguarded create.
+    if params.key?(:expected_status_revision)
       create_at_expected_status_revision
     else
       @message = build_message
@@ -73,7 +74,7 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
 
   def build_message
     user = Current.user || @resource
-    Messages::MessageBuilder.new(user, @conversation, params).perform
+    Messages::MessageBuilder.new(user, @conversation, params, client_idempotency_key: params[:client_idempotency_key]).perform
   end
 
   # Creates the message only while the conversation is still at the status revision the client last saw. The row lock

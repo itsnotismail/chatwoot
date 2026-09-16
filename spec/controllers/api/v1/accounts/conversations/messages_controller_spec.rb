@@ -218,8 +218,8 @@ RSpec.describe 'Conversation Messages API', type: :request do
 
       it 'returns the winning row when a concurrent request inserts the same key first' do
         winner = nil
-        allow(Messages::MessageBuilder).to receive(:new).and_wrap_original do |original, *args|
-          original.call(*args).tap do |builder|
+        allow(Messages::MessageBuilder).to receive(:new).and_wrap_original do |original, *args, **kwargs|
+          original.call(*args, **kwargs).tap do |builder|
             allow(builder).to receive(:perform).and_wrap_original do |perform|
               # The concurrent request commits between this request's lookup and its insert.
               winner = create(:message, conversation: conversation, account: account, inbox: inbox,
@@ -293,11 +293,37 @@ RSpec.describe 'Conversation Messages API', type: :request do
       expect(conversation.messages.count).to eq(1)
     end
 
-    it 'rejects a revision that is not an integer' do
-      post messages_url, params: { content: 'hello', expected_status_revision: 'two' }, headers: bot_headers, as: :json
+    it 'replays a same-key message that committed while this request waited for the lock, even at a moved revision' do
+      winner = nil
+      fired = false
+      # Runs once, right after this request's first idempotency lookup misses: a concurrent request with the same key
+      # commits its message and the conversation is then taken over, all before this request takes the lock.
+      callback = lambda do |*, payload|
+        next if fired || !payload[:sql].start_with?('SELECT') || payload[:sql].exclude?('client_idempotency_key')
 
-      expect(response).to have_http_status(:unprocessable_entity)
-      expect(conversation.messages.count).to eq(0)
+        fired = true
+        winner = create(:message, conversation: conversation, account: account, inbox: inbox,
+                                  message_type: :outgoing, client_idempotency_key: 'intent-9')
+        Conversation.find(conversation.id).open!
+      end
+
+      ActiveSupport::Notifications.subscribed(callback, 'sql.active_record') do
+        post messages_url, params: { content: 'hello', expected_status_revision: 2, client_idempotency_key: 'intent-9' },
+                           headers: bot_headers, as: :json
+      end
+
+      expect(response).to have_http_status(:success)
+      expect(response.parsed_body['id']).to eq(winner.id)
+      expect(conversation.messages.count).to eq(1)
+    end
+
+    [nil, false, '', 'two', '2.5'].each do |malformed|
+      it "rejects #{malformed.inspect} as a revision instead of creating unguarded" do
+        post messages_url, params: { content: 'hello', expected_status_revision: malformed }, headers: bot_headers, as: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(conversation.messages.count).to eq(0)
+      end
     end
   end
 

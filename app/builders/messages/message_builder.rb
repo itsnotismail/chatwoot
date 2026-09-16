@@ -5,8 +5,10 @@ class Messages::MessageBuilder
 
   attr_reader :message
 
-  def initialize(user, conversation, params)
+  # client_idempotency_key is a keyword, not read from params, so only the messages API create endpoint can set it.
+  def initialize(user, conversation, params, client_idempotency_key: nil)
     @params = params
+    @client_idempotency_key = client_idempotency_key.presence
     @private = params[:private] || false
     @conversation = conversation
     @user = user
@@ -143,7 +145,7 @@ class Messages::MessageBuilder
       in_reply_to: @in_reply_to,
       echo_id: @params[:echo_id],
       source_id: @params[:source_id],
-      client_idempotency_key: @params[:client_idempotency_key].presence
+      client_idempotency_key: @client_idempotency_key
     }.merge(external_created_at).merge(automation_rule_id).merge(campaign_id).merge(template_params)
   end
 
