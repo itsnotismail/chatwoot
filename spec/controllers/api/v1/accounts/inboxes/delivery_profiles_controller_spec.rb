@@ -12,7 +12,7 @@ RSpec.describe 'Inbox delivery profile API', type: :request do
     [
       {
         'name' => 'order_shipped', 'status' => 'APPROVED', 'category' => 'UTILITY', 'language' => 'en_US',
-        'namespace' => 'secret_namespace_value', 'id' => '555000111', 'parameter_format' => 'POSITIONAL',
+        'namespace' => 'ns_360_order_shipped', 'id' => '555000111', 'parameter_format' => 'POSITIONAL',
         'components' => [
           { 'type' => 'HEADER', 'format' => 'TEXT', 'text' => 'Order {{1}}', 'example' => { 'header_text' => ['A1'] } },
           { 'type' => 'BODY', 'text' => 'Hi {{1}}, order {{2}} ships {{1}}.', 'example' => { 'body_text' => [%w[Ali A1]] } },
@@ -28,6 +28,18 @@ RSpec.describe 'Inbox delivery profile API', type: :request do
         'components' => [
           { 'type' => 'HEADER', 'format' => 'IMAGE' },
           { 'type' => 'BODY', 'text' => 'Hello {{customer_name}}, pay {{amount}}' }
+        ]
+      },
+      {
+        'name' => 'login_code', 'status' => 'APPROVED', 'category' => 'AUTHENTICATION', 'language' => 'en', 'parameter_format' => 'NAMED',
+        'components' => [
+          { 'type' => 'HEADER', 'format' => 'TEXT', 'text' => 'Code for {{shop_name}}' },
+          { 'type' => 'BODY', 'text' => 'Your code is ready.' },
+          { 'type' => 'BUTTONS', 'buttons' => [
+            { 'type' => 'OTP', 'otp_type' => 'COPY_CODE', 'text' => 'Copy' },
+            { 'type' => 'COPY_CODE', 'example' => 'SAVE10' },
+            { 'type' => 'FLOW', 'text' => 'Open', 'flow_id' => '42' }
+          ] }
         ]
       },
       { 'name' => 'rejected_one', 'status' => 'REJECTED', 'category' => 'MARKETING', 'language' => 'en',
@@ -51,7 +63,7 @@ RSpec.describe 'Inbox delivery profile API', type: :request do
     context 'when it is an agent bot connected to the inbox' do
       before { create(:agent_bot_inbox, inbox: inbox, agent_bot: agent_bot) }
 
-      it 'returns the channel type and only the approved templates with their variables' do
+      it 'returns the channel type and only the approved templates with their variables and parameter hints' do
         get profile_url(inbox.id), headers: bot_headers, as: :json
 
         expect(response).to have_http_status(:ok)
@@ -63,31 +75,59 @@ RSpec.describe 'Inbox delivery profile API', type: :request do
           [
             {
               'name' => 'order_shipped', 'language' => 'en_US', 'category' => 'UTILITY', 'status' => 'APPROVED',
-              'parameter_format' => 'POSITIONAL',
-              'header' => { 'format' => 'TEXT', 'variables' => ['1'] },
-              'body' => { 'variables' => %w[1 2] },
+              'parameter_format' => 'POSITIONAL', 'namespace' => 'ns_360_order_shipped',
+              'header' => { 'format' => 'TEXT', 'variables' => ['1'], 'requires_parameter' => true, 'named_variables_filled_by_position' => false },
+              'body' => { 'variables' => %w[1 2], 'requires_parameter' => true },
               'buttons' => [
-                { 'index' => 0, 'type' => 'URL', 'variables' => ['1'] },
-                { 'index' => 1, 'type' => 'QUICK_REPLY', 'variables' => [] }
+                { 'index' => 0, 'type' => 'URL', 'variables' => ['1'], 'requires_parameter' => true },
+                { 'index' => 1, 'type' => 'QUICK_REPLY', 'variables' => [], 'requires_parameter' => false }
               ]
             },
             {
               'name' => 'payment_reminder', 'language' => 'dv', 'category' => 'UTILITY', 'status' => 'approved',
-              'parameter_format' => 'NAMED',
-              'header' => { 'format' => 'IMAGE', 'variables' => [] },
-              'body' => { 'variables' => %w[customer_name amount] },
+              'parameter_format' => 'NAMED', 'namespace' => nil,
+              'header' => { 'format' => 'IMAGE', 'variables' => [], 'requires_parameter' => true, 'named_variables_filled_by_position' => false },
+              'body' => { 'variables' => %w[customer_name amount], 'requires_parameter' => true },
               'buttons' => []
+            },
+            {
+              'name' => 'login_code', 'language' => 'en', 'category' => 'AUTHENTICATION', 'status' => 'APPROVED',
+              'parameter_format' => 'NAMED', 'namespace' => nil,
+              'header' => { 'format' => 'TEXT', 'variables' => ['shop_name'], 'requires_parameter' => true,
+                            'named_variables_filled_by_position' => true },
+              'body' => { 'variables' => [], 'requires_parameter' => false },
+              'buttons' => [
+                { 'index' => 0, 'type' => 'OTP', 'variables' => [], 'requires_parameter' => true },
+                { 'index' => 1, 'type' => 'COPY_CODE', 'variables' => [], 'requires_parameter' => true },
+                { 'index' => 2, 'type' => 'FLOW', 'variables' => [], 'requires_parameter' => true }
+              ]
             }
           ]
         )
       end
 
-      it 'exposes no channel configuration or provider secrets' do
+      it 'exposes no channel configuration or provider secrets on a 360dialog channel, only the template namespace' do
         get profile_url(inbox.id), headers: bot_headers, as: :json
 
         raw = response.body
-        [whatsapp_channel.phone_number, 'test_key', 'random_id', 'secret_namespace_value', '555000111',
-         'provider_config', 'api_key', 'phone_number_id', 'webhook_verify_token', 'namespace', 'example'].each do |forbidden|
+        [whatsapp_channel.phone_number, 'test_key', 'random_id', '555000111', 'SAVE10', 'flow_id',
+         'provider_config', 'api_key', 'phone_number_id', 'webhook_verify_token', 'example'].each do |forbidden|
+          expect(raw).not_to include(forbidden)
+        end
+        expect(response.parsed_body['templates'].first['namespace']).to eq('ns_360_order_shipped')
+      end
+
+      it 'omits the namespace and all provider config on a WhatsApp Cloud channel' do
+        cloud_channel = create(:channel_whatsapp, provider: 'whatsapp_cloud', account: account, sync_templates: false,
+                                                  validate_provider_config: false, message_templates: templates)
+        create(:agent_bot_inbox, inbox: cloud_channel.inbox, agent_bot: agent_bot)
+
+        get profile_url(cloud_channel.inbox.id), headers: bot_headers, as: :json
+
+        raw = response.body
+        expect(response.parsed_body['templates'].pluck('name')).to eq(%w[order_shipped payment_reminder login_code])
+        [cloud_channel.phone_number, 'test_key', '123456789', 'ns_360_order_shipped', 'namespace', '555000111',
+         'provider_config', 'api_key', 'business_account_id', 'webhook_verify_token', 'example'].each do |forbidden|
           expect(raw).not_to include(forbidden)
         end
       end
@@ -168,7 +208,7 @@ RSpec.describe 'Inbox delivery profile API', type: :request do
         get profile_url(inbox.id), headers: agent.create_new_auth_token, as: :json
 
         expect(response).to have_http_status(:ok)
-        expect(response.parsed_body['templates'].pluck('name')).to eq(%w[order_shipped payment_reminder])
+        expect(response.parsed_body['templates'].pluck('name')).to eq(%w[order_shipped payment_reminder login_code])
       end
     end
   end
