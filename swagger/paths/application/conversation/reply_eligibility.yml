@@ -1,0 +1,45 @@
+tags:
+  - Conversations
+operationId: getConversationReplyEligibility
+summary: Show Reply Eligibility
+description: |
+  Whether a free-form reply is currently allowed in the conversation, computed at request time. Agent bot tokens can read
+  only conversations in inboxes the bot is connected to; any other conversation returns 404.
+security:
+  - userApiKey: []
+  - agentBotApiKey: []
+responses:
+  '200':
+    description: Success
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            channel:
+              type: string
+              example: Channel::Whatsapp
+            can_reply:
+              type: boolean
+              description: False outside the channel's messaging window, where WhatsApp needs a template
+            status:
+              type: string
+              enum: ['open', 'resolved', 'pending', 'snoozed']
+            status_revision:
+              type: integer
+            last_incoming_at:
+              type: [string, 'null']
+              format: date-time
+              description: Creation time of the last incoming message, the start of the messaging window
+  '401':
+    description: Unauthorized
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/bad_request_error'
+  '404':
+    description: Conversation not found in this account, or not in an inbox connected to the agent bot
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/bad_request_error'

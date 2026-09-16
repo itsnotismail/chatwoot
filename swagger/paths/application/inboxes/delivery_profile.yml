@@ -1,0 +1,87 @@
+tags:
+  - Inboxes
+operationId: getInboxDeliveryProfile
+summary: Show Inbox Delivery Profile
+description: |
+  Read-only delivery metadata for one inbox: its channel type and, for WhatsApp inboxes, the approved message templates
+  with the variables of each component. No channel configuration, phone numbers, namespaces or provider credentials are
+  returned. Agent bot tokens can read only inboxes the bot is connected to; any other inbox returns 404.
+security:
+  - userApiKey: []
+  - agentBotApiKey: []
+responses:
+  '200':
+    description: Success. `templates` and `templates_last_updated_at` are present only for `Channel::Whatsapp` inboxes.
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            inbox_id:
+              type: integer
+            channel_type:
+              type: string
+              example: Channel::Whatsapp
+            templates_last_updated_at:
+              type: [string, 'null']
+              format: date-time
+            templates:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  language:
+                    type: string
+                  category:
+                    type: string
+                  status:
+                    type: string
+                    description: Always approved (case as synced from the provider)
+                  parameter_format:
+                    type: string
+                    enum: ['POSITIONAL', 'NAMED']
+                  header:
+                    type: [object, 'null']
+                    properties:
+                      format:
+                        type: string
+                        example: TEXT
+                      variables:
+                        type: array
+                        items:
+                          type: string
+                  body:
+                    type: [object, 'null']
+                    properties:
+                      variables:
+                        type: array
+                        items:
+                          type: string
+                  buttons:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        index:
+                          type: integer
+                        type:
+                          type: string
+                          example: URL
+                        variables:
+                          type: array
+                          items:
+                            type: string
+  '401':
+    description: Unauthorized
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/bad_request_error'
+  '404':
+    description: Inbox not found in this account, or not connected to the agent bot
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/bad_request_error'
