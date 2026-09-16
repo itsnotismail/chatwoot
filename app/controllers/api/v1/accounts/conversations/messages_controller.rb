@@ -6,9 +6,12 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
   end
 
   def create
-    user = Current.user || @resource
-    mb = Messages::MessageBuilder.new(user, @conversation, params)
-    @message = mb.perform
+    # A client_idempotency_key replay returns the message the first request created, with nothing re-created or re-sent.
+    @message = idempotent_message || build_message
+  rescue ActiveRecord::RecordNotUnique => e
+    # A concurrent request with the same key won the unique index; return its row.
+    @message = idempotent_message
+    render_could_not_create_error(e.message) if @message.blank?
   rescue StandardError => e
     render_could_not_create_error(e.message)
   end
@@ -58,6 +61,17 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
 
   def message
     @message ||= @conversation.messages.find(permitted_params[:id])
+  end
+
+  def build_message
+    user = Current.user || @resource
+    Messages::MessageBuilder.new(user, @conversation, params).perform
+  end
+
+  def idempotent_message
+    return if params[:client_idempotency_key].blank?
+
+    @conversation.messages.find_by(account_id: @conversation.account_id, client_idempotency_key: params[:client_idempotency_key])
   end
 
   def message_finder

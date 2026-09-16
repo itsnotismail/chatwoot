@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_03_24_102005) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_16_000002) do
   # These extensions should be enabled to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -981,8 +981,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_03_24_102005) do
     t.jsonb "additional_attributes", default: {}
     t.text "processed_message_content"
     t.jsonb "sentiment", default: {}
+    t.string "client_idempotency_key"
     t.index "((additional_attributes -> 'campaign_id'::text))", name: "index_messages_on_additional_attributes_campaign_id", using: :gin
     t.index ["account_id", "content_type", "created_at"], name: "idx_messages_account_content_created"
+    t.index ["account_id", "conversation_id", "client_idempotency_key"], name: "index_messages_on_client_idempotency_key", unique: true, where: "(client_idempotency_key IS NOT NULL)"
     t.index ["account_id", "created_at", "message_type"], name: "index_messages_on_account_created_type"
     t.index ["account_id", "inbox_id"], name: "index_messages_on_account_id_and_inbox_id"
     t.index ["account_id"], name: "index_messages_on_account_id"

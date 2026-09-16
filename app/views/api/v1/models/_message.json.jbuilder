@@ -10,5 +10,6 @@ json.content_attributes message.content_attributes
 json.created_at message.created_at.to_i
 json.private message.private
 json.source_id message.source_id
+json.client_idempotency_key message.client_idempotency_key if message.client_idempotency_key
 json.sender message.sender.push_event_data if message.sender
 json.attachments message.attachments.map(&:push_event_data) if message.attachments.present?
