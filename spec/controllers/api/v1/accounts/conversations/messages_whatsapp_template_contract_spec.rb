@@ -14,6 +14,17 @@ RSpec.describe 'WhatsApp template send contract for agent bots', type: :request 
         ] },
       { 'name' => 'payment_reminder', 'status' => 'APPROVED', 'category' => 'UTILITY', 'language' => 'en', 'parameter_format' => 'NAMED',
         'components' => [{ 'type' => 'BODY', 'text' => 'Hello {{customer_name}}' }] },
+      { 'name' => 'promo_code', 'status' => 'APPROVED', 'category' => 'MARKETING', 'language' => 'en', 'parameter_format' => 'POSITIONAL',
+        'components' => [
+          { 'type' => 'HEADER', 'format' => 'TEXT', 'text' => 'Offer for {{1}}' },
+          { 'type' => 'BODY', 'text' => 'Use this code on order {{1}}.' },
+          { 'type' => 'BUTTONS', 'buttons' => [{ 'type' => 'COPY_CODE', 'example' => 'SAVE10' }] }
+        ] },
+      { 'name' => 'invoice_ready', 'status' => 'APPROVED', 'category' => 'UTILITY', 'language' => 'en', 'parameter_format' => 'POSITIONAL',
+        'components' => [
+          { 'type' => 'HEADER', 'format' => 'DOCUMENT' },
+          { 'type' => 'BODY', 'text' => 'Invoice {{1}} is attached.' }
+        ] },
       { 'name' => 'rejected_offer', 'status' => 'REJECTED', 'category' => 'MARKETING', 'language' => 'en',
         'components' => [{ 'type' => 'BODY', 'text' => 'Offer {{1}}' }] }
     ]
@@ -90,6 +101,51 @@ RSpec.describe 'WhatsApp template send contract for agent bots', type: :request 
 
     expect(stub).to have_been_requested.once
     expect(message.reload.source_id).to eq('wamid.OK2')
+  end
+
+  it 'sends a text header, body and copy_code button in header, body, button order' do
+    stub = stub_request(:post, messages_url)
+           .with(body: template_request_body('promo_code', 'en', [
+                                               { type: 'header', parameters: [{ type: 'text', text: 'Aisha' }] },
+                                               { type: 'body', parameters: [{ type: 'text', text: 'A-17' }] },
+                                               { type: 'button', sub_type: 'copy_code', index: 0,
+                                                 parameters: [{ type: 'coupon_code', coupon_code: 'SAVE10' }] }
+                                             ]))
+           .to_return(status: 200, body: { messages: [{ id: 'wamid.OK4' }] }.to_json, headers: { 'content-type' => 'application/json' })
+
+    message = create_bot_message(
+      content: 'Offer for Aisha',
+      template_params: { name: 'promo_code', language: 'en',
+                         processed_params: { header: { '1' => 'Aisha' }, body: { '1' => 'A-17' },
+                                             buttons: [{ type: 'copy_code', parameter: 'SAVE10' }] } }
+    )
+    SendReplyJob.perform_now(message.id)
+
+    expect(stub).to have_been_requested.once
+    expect(message.reload.source_id).to eq('wamid.OK4')
+  end
+
+  it 'sends a media header as a document link with its filename' do
+    stub = stub_request(:post, messages_url)
+           .with(body: template_request_body('invoice_ready', 'en', [
+                                               { type: 'header', parameters: [{ type: 'document',
+                                                                                document: { link: 'https://cdn.example.com/inv-17.pdf',
+                                                                                            filename: 'inv-17.pdf' } }] },
+                                               { type: 'body', parameters: [{ type: 'text', text: 'INV-17' }] }
+                                             ]))
+           .to_return(status: 200, body: { messages: [{ id: 'wamid.OK5' }] }.to_json, headers: { 'content-type' => 'application/json' })
+
+    message = create_bot_message(
+      content: 'Invoice INV-17 is attached.',
+      template_params: { name: 'invoice_ready', language: 'en',
+                         processed_params: { header: { media_url: 'https://cdn.example.com/inv-17.pdf', media_type: 'document',
+                                                       media_name: 'inv-17.pdf' },
+                                             body: { '1' => 'INV-17' } } }
+    )
+    SendReplyJob.perform_now(message.id)
+
+    expect(stub).to have_been_requested.once
+    expect(message.reload.source_id).to eq('wamid.OK5')
   end
 
   it 'sends a template even inside the window when template_params are present' do
