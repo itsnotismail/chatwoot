@@ -97,6 +97,25 @@ describe Whatsapp::SendOnWhatsappService do
         expect(message.reload.external_error).to eq('Template not found or invalid template name')
       end
 
+      it 'tells the inbox agent bot a provider rejection failed the message, with the status and error' do
+        agent_bot = create(:agent_bot, outgoing_url: 'https://bot.example.com/webhook')
+        create(:agent_bot_inbox, inbox: whatsapp_channel.inbox, agent_bot: agent_bot)
+        create(:message, message_type: :incoming, content: 'test', conversation: conversation, account: conversation.account)
+        message = create(:message, message_type: :outgoing, content: 'test', conversation: conversation, account: conversation.account)
+        stub_request(:post, 'https://waba.360dialog.io/v1/messages')
+          .to_return(status: 400, headers: { 'content-type' => 'application/json' },
+                     body: { meta: { success: false, http_code: 400, developer_message: 'recipient not on WhatsApp' } }.to_json)
+        payloads = []
+        allow(AgentBots::WebhookJob).to receive(:perform_later) { |url, payload, *| payloads << [url, payload] }
+
+        described_class.new(message: message).perform
+
+        url, payload = payloads.find { |_, data| data[:event] == 'message_updated' && data[:id] == message.id }
+        expect(url).to eq(agent_bot.outgoing_url)
+        expect(payload[:status]).to eq('failed')
+        expect(payload[:content_attributes][:external_error]).to eq('recipient not on WhatsApp')
+      end
+
       it 'calls channel.send_template when after 24 hour limit' do
         message = create(:message, message_type: :outgoing, content: 'Your package has been shipped. It will be delivered in 3 business days.',
                                    conversation: conversation, additional_attributes: { template_params: template_params },
