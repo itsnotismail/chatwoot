@@ -354,6 +354,78 @@ RSpec.describe Conversation do
     end
   end
 
+  describe '#status_revision' do
+    let(:conversation) { create(:conversation, status: :open) }
+
+    def revision_after
+      yield
+      [conversation.status_revision, conversation.reload.status_revision]
+    end
+
+    it 'starts at zero for the status a conversation is created with' do
+      expect(conversation.reload.status_revision).to eq(0)
+    end
+
+    it 'increments once per status change on every model transition method' do
+      expect(revision_after { conversation.resolved! }).to eq([1, 1])
+      expect(revision_after { conversation.toggle_status }).to eq([2, 2])
+      expect(revision_after { conversation.pending! }).to eq([3, 3])
+      expect(revision_after { conversation.bot_handoff! }).to eq([4, 4])
+      expect(revision_after { conversation.snoozed! }).to eq([5, 5])
+      expect(revision_after { conversation.update!(status: :open) }).to eq([6, 6])
+      expect(conversation.status).to eq('open')
+    end
+
+    it 'does not change when a save leaves the status alone' do
+      conversation.update!(priority: :high, waiting_since: 1.hour.ago)
+      conversation.open!
+
+      expect(conversation.reload.status_revision).to eq(0)
+    end
+
+    it 'does not lose a revision when two stale copies change the status one after the other' do
+      first = described_class.find(conversation.id)
+      second = described_class.find(conversation.id)
+
+      first.resolved!
+      second.pending!
+
+      expect([first.status_revision, second.status_revision]).to eq([1, 2])
+      expect(conversation.reload.status_revision).to eq(2)
+    end
+
+    it 'increments through auto-resolve, snooze expiry and a failed agent bot webhook' do
+      account = conversation.account
+      account.update!(auto_resolve_after: 14_400, auto_resolve_ignore_waiting: false)
+      conversation.update!(last_activity_at: 13.days.ago)
+      Conversations::ResolutionJob.perform_now(account: account)
+      expect(conversation.reload.slice(:status, :status_revision)).to eq('status' => 'resolved', 'status_revision' => 1)
+
+      conversation.update!(status: :snoozed, snoozed_until: 1.hour.ago)
+      Conversations::ReopenSnoozedConversationsJob.perform_now
+      expect(conversation.reload.slice(:status, :status_revision)).to eq('status' => 'open', 'status_revision' => 3)
+
+      conversation.pending!
+      message = create(:message, conversation: conversation, account: account, inbox: conversation.inbox)
+      Webhooks::Trigger.new('https://bot.example.com', { event: 'message_created', id: message.id }, :agent_bot_webhook)
+                       .handle_failure(StandardError.new('boom'))
+      expect(conversation.reload.slice(:status, :status_revision)).to eq('status' => 'open', 'status_revision' => 5)
+    end
+
+    it 'carries the committed revision in the agent bot status webhook' do
+      agent_bot = create(:agent_bot, outgoing_url: 'https://bot.example.com/webhook')
+      create(:agent_bot_inbox, inbox: conversation.inbox, agent_bot: agent_bot)
+      payloads = []
+      allow(AgentBots::WebhookJob).to receive(:perform_later) { |_url, payload, *| payloads << payload }
+
+      conversation.resolved!
+
+      expect(payloads.map { |payload| payload.values_at(:event, :status, :status_revision) })
+        .to include(['conversation_status_changed', 'resolved', 1], ['conversation_resolved', 'resolved', 1],
+                    ['conversation_updated', 'resolved', 1])
+    end
+  end
+
   describe '#toggle_priority' do
     it 'defaults priority to nil when created' do
       conversation = create(:conversation, status: 'open')
@@ -617,6 +689,7 @@ RSpec.describe Conversation do
         last_activity_at: conversation.last_activity_at.to_i,
         inbox_id: conversation.inbox_id,
         status: conversation.status,
+        status_revision: 0,
         contact_inbox: conversation.contact_inbox,
         timestamp: conversation.last_activity_at.to_i,
         can_reply: true,

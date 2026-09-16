@@ -103,6 +103,12 @@ RSpec.describe Message do
       expect(conversation.reload.status).to eq('open')
     end
 
+    it 'advances the status revision when an agent reply takes the conversation over' do
+      expect do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: create(:user))
+      end.to change { conversation.reload.status_revision }.by(1)
+    end
+
     it 'leaves it pending for a private note' do
       create(:message, conversation: conversation, message_type: :outgoing,
                         sender: create(:user), private: true)

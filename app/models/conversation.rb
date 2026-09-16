@@ -118,6 +118,7 @@ class Conversation < ApplicationRecord
   before_create :determine_conversation_status
   before_create :ensure_waiting_since
 
+  after_update :increment_status_revision, if: :saved_change_to_status?
   after_update_commit :execute_after_update_commit_callbacks
   after_create_commit :notify_conversation_creation
   after_create_commit :load_attributes_created_by_db_triggers
@@ -232,6 +233,18 @@ class Conversation < ApplicationRecord
     # rubocop:disable Rails/SkipsModelValidations
     update_column(:waiting_since, nil)
     # rubocop:enable Rails/SkipsModelValidations
+  end
+
+  # Every committed status change gets the next status_revision, so webhook consumers can order ownership changes.
+  # The increment is done in SQL under the row lock the status UPDATE already holds: a concurrent writer with a stale
+  # in-memory copy blocks until this transaction commits and then increments the committed value, so no revision is
+  # lost or reused (a Ruby-side status_revision_in_database + 1 would let both writers save the same number).
+  def increment_status_revision
+    revision = self.class.connection.select_value(
+      self.class.sanitize_sql_array(['UPDATE conversations SET status_revision = status_revision + 1 WHERE id = ? RETURNING status_revision', id])
+    )
+    self[:status_revision] = revision
+    clear_attribute_change(:status_revision)
   end
 
   def ensure_snooze_until_reset
