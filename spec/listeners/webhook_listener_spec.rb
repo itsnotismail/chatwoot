@@ -36,6 +36,18 @@ describe WebhookListener do
       end
     end
 
+    context 'when the message has a client idempotency key' do
+      it 'includes the key in the account webhook payload' do
+        webhook = create(:webhook, inbox: inbox, account: account)
+        message.update!(client_idempotency_key: 'intent-7')
+        expect(WebhookJob).to receive(:perform_later).with(
+          webhook.url, hash_including(event: 'message_created', id: message.id, client_idempotency_key: 'intent-7'), :account_webhook,
+          secret: webhook.secret, delivery_id: instance_of(String)
+        ).once
+        listener.message_created(message_created_event)
+      end
+    end
+
     context 'when webhook is configured and event is not subscribed' do
       it 'does not trigger the webhook event' do
         create(:webhook, subscriptions: ['conversation_created'], inbox: inbox, account: account)

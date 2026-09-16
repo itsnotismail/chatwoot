@@ -188,6 +188,12 @@ class Message < ApplicationRecord
       source_id: source_id,
       status: status
     }
+    merge_optional_webhook_data(data)
+  end
+
+  def merge_optional_webhook_data(data)
+    # Lets a client match delivery updates to its send intent before it has recorded the message id.
+    data[:client_idempotency_key] = client_idempotency_key if client_idempotency_key.present?
     data[:attachments] = attachments.map(&:push_event_data) if attachments.present?
     data
   end
