@@ -36,6 +36,9 @@ properties:
       - 'null'
     enum: ["sent", "delivered", "read", "failed", null]
     description: The status of the message
+  client_idempotency_key:
+    type: string
+    description: The client idempotency key the message was created with. Present only when one was set.
   source_id:
     type:
       - string

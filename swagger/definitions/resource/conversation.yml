@@ -51,6 +51,9 @@ properties:
     type: string
     enum: ['open', 'resolved', 'pending']
     description: The status of the conversation
+  status_revision:
+    type: integer
+    description: Increments on every status change of the conversation; order ownership changes by it
   created_at:
     type: number
     description: The time at which conversation was created

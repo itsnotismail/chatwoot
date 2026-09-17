@@ -65,6 +65,21 @@ describe AgentBotListener do
     end
   end
 
+  describe '#message_updated' do
+    it 'carries the client idempotency key of a keyed outgoing message to the agent bot' do
+      create(:agent_bot_inbox, inbox: inbox, agent_bot: agent_bot)
+      message = create(:message, message_type: 'outgoing', account: account, inbox: inbox, conversation: conversation,
+                                 client_idempotency_key: 'intent-42')
+      payloads = []
+      allow(AgentBots::WebhookJob).to receive(:perform_later) { |_url, payload, *| payloads << payload }
+
+      message.update!(status: :delivered)
+
+      payload = payloads.find { |data| data[:event] == 'message_updated' }
+      expect(payload).to include(id: message.id, status: 'delivered', client_idempotency_key: 'intent-42')
+    end
+  end
+
   describe '#conversation_status_changed' do
     let(:event_name) { 'conversation.status_changed' }
     let(:changed_attributes) { { status: %w[open pending] } }

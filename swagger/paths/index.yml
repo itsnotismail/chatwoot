@@ -390,6 +390,13 @@
   post:
     $ref: ./application/conversation/assignments.yml
 
+/api/v1/accounts/{account_id}/conversations/{conversation_id}/reply_eligibility:
+  parameters:
+    - $ref: '#/components/parameters/account_id'
+    - $ref: '#/components/parameters/conversation_id'
+  get:
+    $ref: ./application/conversation/reply_eligibility.yml
+
 # Conversation Labels
 
 /api/v1/accounts/{account_id}/conversations/{conversation_id}/labels:
@@ -419,6 +426,12 @@
   $ref: ./application/inboxes/get_agent_bot.yml
 /api/v1/accounts/{account_id}/inboxes/{id}/set_agent_bot:
   $ref: ./application/inboxes/set_agent_bot.yml
+/api/v1/accounts/{account_id}/inboxes/{inbox_id}/delivery_profile:
+  parameters:
+    - $ref: '#/components/parameters/account_id'
+    - $ref: '#/components/parameters/inbox_id'
+  get:
+    $ref: ./application/inboxes/delivery_profile.yml
 
 # Inbox Members
 /api/v1/accounts/{account_id}/inbox_members/{inbox_id}:

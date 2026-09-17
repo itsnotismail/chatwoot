@@ -78,6 +78,7 @@ class Message < ApplicationRecord
   validates :content_type, presence: true
   validates :content, length: { maximum: 150_000 }
   validates :processed_message_content, length: { maximum: 150_000 }
+  validates :client_idempotency_key, length: { maximum: 128 }
 
   # when you have a temperory id in your frontend and want it echoed back via action cable
   attr_accessor :echo_id
@@ -144,7 +145,7 @@ class Message < ApplicationRecord
   end
 
   def push_event_data
-    data = attributes.symbolize_keys.merge(
+    data = attributes.except('client_idempotency_key').symbolize_keys.merge(
       created_at: created_at.to_i,
       message_type: message_type_before_type_cast,
       conversation_id: conversation&.display_id,
@@ -184,8 +185,15 @@ class Message < ApplicationRecord
       message_type: message_type,
       private: private,
       sender: sender.try(:webhook_data),
-      source_id: source_id
+      source_id: source_id,
+      status: status
     }
+    merge_optional_webhook_data(data)
+  end
+
+  def merge_optional_webhook_data(data)
+    # Lets a client match delivery updates to its send intent before it has recorded the message id.
+    data[:client_idempotency_key] = client_idempotency_key if client_idempotency_key.present?
     data[:attachments] = attachments.map(&:push_event_data) if attachments.present?
     data
   end

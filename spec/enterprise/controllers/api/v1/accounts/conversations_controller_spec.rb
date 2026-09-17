@@ -244,4 +244,36 @@ RSpec.describe 'Conversations API', type: :request do
       end
     end
   end
+
+  describe 'POST /api/v1/accounts/{account.id}/conversations with an initial agent message in a bot inbox' do
+    let(:agent) { create(:user, account: account, role: :agent) }
+    let(:inbox) { create(:inbox, account: account) }
+    let(:contact_inbox) { create(:contact_inbox, inbox: inbox, contact: create(:contact, account: account)) }
+
+    before do
+      create(:inbox_member, inbox: inbox, user: agent)
+      create(:agent_bot_inbox, inbox: inbox, agent_bot: create(:agent_bot), status: 'active')
+    end
+
+    # The conversation is created (pending, bot inbox) and then taken over by the agent's message in the same
+    # transaction, so the takeover's own conversation instance never gets commit callbacks.
+    it 'dispatches the takeover status events exactly once at status_revision 1' do
+      events = []
+      allow(Rails.configuration.dispatcher).to receive(:dispatch) do |event, _time, data|
+        events << [event, data[:conversation]&.status, data[:conversation]&.status_revision] if data[:conversation]
+      end
+
+      post "/api/v1/accounts/#{account.id}/conversations",
+           headers: agent.create_new_auth_token,
+           params: { source_id: contact_inbox.source_id, message: { content: 'hi, a human here' } },
+           as: :json
+
+      expect(response).to have_http_status(:success)
+      conversation = account.conversations.find_by(display_id: response.parsed_body['id'])
+      expect(conversation.slice(:status, :status_revision)).to eq('status' => 'open', 'status_revision' => 1)
+      expect(events.select { |event| event.first == Conversation::CONVERSATION_OPENED }).to eq([[Conversation::CONVERSATION_OPENED, 'open', 1]])
+      expect(events.select { |event| event.first == Conversation::CONVERSATION_STATUS_CHANGED })
+        .to eq([[Conversation::CONVERSATION_STATUS_CHANGED, 'open', 1]])
+    end
+  end
 end
