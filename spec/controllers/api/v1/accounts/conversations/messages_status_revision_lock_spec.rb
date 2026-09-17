@@ -31,6 +31,8 @@ RSpec.describe 'Conversation Messages API expected_status_revision locking', typ
       ActiveRecord::Base.connection.exec_delete("DELETE FROM #{table} WHERE account_id = #{account.id.to_i}")
     end
     AccessToken.where(owner: agent_bot).delete_all
+    # Audits carry no account_id column, so the sweep above misses them; left behind they break later audit-count specs.
+    Audited::Audit.where(associated_type: 'Account', associated_id: account.id).delete_all
     Account.where(id: account.id).delete_all
   end
 
