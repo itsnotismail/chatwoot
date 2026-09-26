@@ -24,6 +24,22 @@ properties:
     type: object
     description: Attributes based on the content type
     example: {}
+  client_idempotency_key:
+    type: string
+    maxLength: 128
+    description: |
+      Optional client-generated key for retry-safe creation. When a message with this key already exists in the
+      same conversation, that message is returned with 200 and nothing is created or re-sent (even if the rest of the
+      body differs, and even if expected_status_revision no longer matches). Only honoured by this endpoint.
+    example: 'order-260913-X79W-confirmation'
+  expected_status_revision:
+    type: integer
+    description: |
+      Optional ownership guard. The message is created only if the conversation's status_revision still equals this
+      value, checked and inserted under a row lock on the conversation; otherwise the request returns 409 and creates
+      nothing. Sending the key with null, false, a blank or a non-integer value returns 422. A committed message's
+      channel send cannot be recalled by a later status change.
+    example: 3
   campaign_id:
     type: integer
     description: The campaign id to which the message belongs

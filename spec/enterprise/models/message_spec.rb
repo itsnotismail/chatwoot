@@ -103,6 +103,64 @@ RSpec.describe Message do
       expect(conversation.reload.status).to eq('open')
     end
 
+    it 'advances the status revision when an agent reply takes the conversation over' do
+      expect do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: create(:user))
+      end.to change { conversation.reload.status_revision }.by(1)
+    end
+
+    it 'opens the conversation and bumps its revision inside the reply transaction, before commit' do
+      in_transaction = nil
+
+      ActiveRecord::Base.transaction do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: create(:user))
+        in_transaction = Conversation.where(id: conversation.id).pick(:status, :status_revision)
+        expect(Conversations::ActivityMessageJob).not_to have_been_enqueued
+      end
+
+      expect(in_transaction).to eq(['open', 1])
+      expect(Conversations::ActivityMessageJob).to have_been_enqueued.exactly(:once)
+    end
+
+    it 'runs the takeover as the system and dispatches its status webhooks exactly once, before message_created' do
+      agent = create(:user, account: conversation.account)
+      agent_bot = create(:agent_bot, outgoing_url: 'https://bot.example.com/webhook')
+      create(:agent_bot_inbox, inbox: conversation.inbox, agent_bot: agent_bot)
+      events = []
+      allow(AgentBots::WebhookJob).to receive(:perform_later) do |_url, payload, *|
+        conversation_data = payload[:conversation] || payload
+        events << [payload[:event], conversation_data[:status], conversation_data[:status_revision]]
+      end
+
+      Current.user = agent
+      expect do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent)
+      end.to have_enqueued_job(Conversations::ActivityMessageJob).exactly(:once)
+      Current.user = nil
+
+      names = events.map(&:first)
+      expect(names.count('conversation_opened')).to eq(1)
+      expect(names.count('conversation_status_changed')).to eq(1)
+      expect(names.index('conversation_status_changed')).to be < names.index('message_created')
+      expect(events.map { |event| event.drop(1) }.uniq).to eq([['open', 1]])
+    end
+
+    it 'shows an assignee set by in-transaction auto-assignment in the message_created payload' do
+      agent = create(:user, account: conversation.account)
+      create(:inbox_member, inbox: conversation.inbox, user: agent)
+      allow(AutoAssignment::AgentAssignmentService).to receive(:new) do |conversation:, **|
+        instance_double(AutoAssignment::AgentAssignmentService, perform: conversation.update!(assignee: agent))
+      end
+      payloads = []
+      allow(Rails.configuration.dispatcher).to receive(:dispatch) do |event, _time, data|
+        payloads << [event, data[:message].conversation.assignee_id] if event == Message::MESSAGE_CREATED
+      end
+
+      create(:message, conversation: conversation, message_type: :outgoing, sender: agent)
+
+      expect(payloads).to eq([[Message::MESSAGE_CREATED, agent.id]])
+    end
+
     it 'leaves it pending for a private note' do
       create(:message, conversation: conversation, message_type: :outgoing,
                         sender: create(:user), private: true)

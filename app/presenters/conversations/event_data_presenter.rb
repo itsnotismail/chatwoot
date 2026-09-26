@@ -39,6 +39,8 @@ class Conversations::EventDataPresenter < SimpleDelegator
 
   def push_timestamps
     {
+      # Monotonic per conversation status change: order ownership by it, not by webhook arrival or updated_at.
+      status_revision: status_revision,
       agent_last_seen_at: agent_last_seen_at.to_i,
       contact_last_seen_at: contact_last_seen_at.to_i,
       last_activity_at: last_activity_at.to_i,

@@ -145,6 +145,7 @@ Rails.application.routes.draw do
               resource :participants, only: [:show, :create, :update, :destroy]
               resource :direct_uploads, only: [:create]
               resource :draft_messages, only: [:show, :update, :destroy]
+              resource :reply_eligibility, only: [:show]
             end
             member do
               post :mute
@@ -273,6 +274,7 @@ Rails.application.routes.draw do
 
           resources :inboxes, only: [] do
             resource :assignment_policy, only: [:show, :create, :destroy], module: :inboxes
+            resource :delivery_profile, only: [:show], module: :inboxes
           end
 
           namespace :twitter do

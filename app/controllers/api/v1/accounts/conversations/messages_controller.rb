@@ -6,9 +6,21 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
   end
 
   def create
-    user = Current.user || @resource
-    mb = Messages::MessageBuilder.new(user, @conversation, params)
-    @message = mb.perform
+    # A client_idempotency_key replay returns the message the first request created, with nothing re-created or re-sent.
+    # It is checked before expected_status_revision, so a retry still gets its message after ownership has changed.
+    @message = idempotent_message
+    return if @message.present?
+
+    # key?, not present?: a null, false or blank revision is a malformed guard (422), never an unguarded create.
+    if params.key?(:expected_status_revision)
+      create_at_expected_status_revision
+    else
+      @message = build_message
+    end
+  rescue ActiveRecord::RecordNotUnique => e
+    # A concurrent request with the same key won the unique index; return its row.
+    @message = idempotent_message
+    render_could_not_create_error(e.message) if @message.blank?
   rescue StandardError => e
     render_could_not_create_error(e.message)
   end
@@ -58,6 +70,39 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
 
   def message
     @message ||= @conversation.messages.find(permitted_params[:id])
+  end
+
+  def build_message
+    user = Current.user || @resource
+    Messages::MessageBuilder.new(user, @conversation, params, client_idempotency_key: params[:client_idempotency_key]).perform
+  end
+
+  # Creates the message only while the conversation is still at the status revision the client last saw. The row lock
+  # makes a concurrent status change (toggle_status, the agent-reply takeover) wait for this commit, so it lands after the
+  # message instead of in between the check and the insert. A committed message's channel send cannot be recalled.
+  def create_at_expected_status_revision
+    expected_revision = Integer(params[:expected_status_revision].to_s, 10)
+    @conversation.with_lock do
+      @message = idempotent_message
+      next if @message.present?
+
+      if @conversation.status_revision == expected_revision
+        @message = build_message
+      else
+        render_status_revision_mismatch
+      end
+    end
+  end
+
+  def render_status_revision_mismatch
+    render json: { error: 'status_revision_mismatch', status: @conversation.status, status_revision: @conversation.status_revision },
+           status: :conflict
+  end
+
+  def idempotent_message
+    return if params[:client_idempotency_key].blank?
+
+    @conversation.messages.find_by(account_id: @conversation.account_id, client_idempotency_key: params[:client_idempotency_key])
   end
 
   def message_finder

@@ -157,6 +157,174 @@ RSpec.describe 'Conversation Messages API', type: :request do
         expect(conversation.messages.first.content_type).to eq(params[:content_type])
       end
     end
+
+    context 'when an agent bot sends a client_idempotency_key' do
+      let!(:agent_bot) { create(:agent_bot) }
+      let(:bot_headers) { { api_access_token: agent_bot.access_token.token } }
+      let(:messages_url) { api_v1_account_conversation_messages_url(account_id: account.id, conversation_id: conversation.display_id) }
+
+      before { create(:agent_bot_inbox, inbox: inbox, agent_bot: agent_bot) }
+
+      it 'returns the first message on a retry without creating or sending another' do
+        params = { content: 'order confirmed', client_idempotency_key: 'intent-1' }
+        responses = []
+        # The replay is answered from the lookup, never by attempting a second insert.
+        expect(Messages::MessageBuilder).to receive(:new).once.and_call_original
+
+        expect do
+          2.times do
+            post messages_url, params: params, headers: bot_headers, as: :json
+            responses << [response.status, response.parsed_body]
+          end
+        end.to have_enqueued_job(SendReplyJob).exactly(:once)
+
+        expect(responses.map(&:first)).to eq([200, 200])
+        expect(responses[1][1]['id']).to eq(responses[0][1]['id'])
+        expect(responses[1][1]['client_idempotency_key']).to eq('intent-1')
+        expect(conversation.messages.count).to eq(1)
+        expect(conversation.messages.first.client_idempotency_key).to eq('intent-1')
+      end
+
+      it 'creates a separate message for the same key in another conversation' do
+        other_conversation = create(:conversation, inbox: inbox, account: account)
+        create(:message, conversation: other_conversation, account: account, inbox: inbox, client_idempotency_key: 'intent-1')
+        other_account_conversation = create(:conversation)
+        create(:message, conversation: other_account_conversation, account: other_account_conversation.account,
+                         inbox: other_account_conversation.inbox, client_idempotency_key: 'intent-1')
+
+        post messages_url, params: { content: 'hello', client_idempotency_key: 'intent-1' }, headers: bot_headers, as: :json
+
+        expect(response).to have_http_status(:success)
+        expect(conversation.messages.count).to eq(1)
+        expect(response.parsed_body['id']).to eq(conversation.messages.first.id)
+      end
+
+      it 'creates a message per request when the key is absent' do
+        expect do
+          2.times { post messages_url, params: { content: 'hello' }, headers: bot_headers, as: :json }
+        end.to have_enqueued_job(SendReplyJob).exactly(:twice)
+
+        expect(conversation.messages.count).to eq(2)
+        expect(conversation.messages.pluck(:client_idempotency_key)).to eq([nil, nil])
+        expect(response.parsed_body).not_to have_key('client_idempotency_key')
+      end
+
+      it 'rejects a key longer than 128 characters' do
+        post messages_url, params: { content: 'hello', client_idempotency_key: 'k' * 129 }, headers: bot_headers, as: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(conversation.messages.count).to eq(0)
+      end
+
+      it 'returns the winning row when a concurrent request inserts the same key first' do
+        winner = nil
+        allow(Messages::MessageBuilder).to receive(:new).and_wrap_original do |original, *args, **kwargs|
+          original.call(*args, **kwargs).tap do |builder|
+            allow(builder).to receive(:perform).and_wrap_original do |perform|
+              # The concurrent request commits between this request's lookup and its insert.
+              winner = create(:message, conversation: conversation, account: account, inbox: inbox,
+                                        message_type: :outgoing, client_idempotency_key: 'intent-race')
+              perform.call
+            end
+          end
+        end
+
+        post messages_url, params: { content: 'hello', client_idempotency_key: 'intent-race' }, headers: bot_headers, as: :json
+
+        expect(response).to have_http_status(:success)
+        expect(response.parsed_body['id']).to eq(winner.id)
+        expect(conversation.messages.count).to eq(1)
+      end
+    end
+  end
+
+  describe 'POST /api/v1/accounts/{account.id}/conversations/<id>/messages with expected_status_revision' do
+    let!(:inbox) { create(:inbox, account: account) }
+    let!(:agent_bot) { create(:agent_bot) }
+    let!(:conversation) { create(:conversation, inbox: inbox, account: account, status: :pending) }
+    let(:bot_headers) { { api_access_token: agent_bot.access_token.token } }
+    let(:messages_url) { api_v1_account_conversation_messages_url(account_id: account.id, conversation_id: conversation.display_id) }
+
+    before do
+      create(:agent_bot_inbox, inbox: inbox, agent_bot: agent_bot)
+      conversation.open!
+      conversation.pending!
+    end
+
+    it 'creates the message under a conversation row lock when the revision still matches' do
+      locking_queries = []
+      callback = lambda { |*, payload|
+        locking_queries << payload[:sql] if payload[:sql].match?(/FROM "conversations".*FOR UPDATE/m)
+      }
+
+      ActiveSupport::Notifications.subscribed(callback, 'sql.active_record') do
+        expect do
+          post messages_url, params: { content: 'your order is confirmed', expected_status_revision: 2 }, headers: bot_headers, as: :json
+        end.to have_enqueued_job(SendReplyJob).exactly(:once)
+      end
+
+      expect(response).to have_http_status(:success)
+      expect(conversation.messages.count).to eq(1)
+      expect(locking_queries.size).to eq(1)
+    end
+
+    it 'returns 409 with the current ownership and creates nothing when the revision moved' do
+      conversation.open!
+
+      expect do
+        post messages_url, params: { content: 'your order is confirmed', expected_status_revision: 2 }, headers: bot_headers, as: :json
+      end.not_to have_enqueued_job(SendReplyJob)
+
+      expect(response).to have_http_status(:conflict)
+      expect(response.parsed_body).to eq('error' => 'status_revision_mismatch', 'status' => 'open', 'status_revision' => 3)
+      expect(conversation.messages.count).to eq(0)
+    end
+
+    it 'replays an already-created message even after the revision moved' do
+      params = { content: 'your order is confirmed', expected_status_revision: 2, client_idempotency_key: 'intent-7' }
+      post messages_url, params: params, headers: bot_headers, as: :json
+      first_id = response.parsed_body['id']
+      conversation.open!
+
+      post messages_url, params: params, headers: bot_headers, as: :json
+
+      expect(response).to have_http_status(:success)
+      expect(response.parsed_body['id']).to eq(first_id)
+      expect(conversation.messages.count).to eq(1)
+    end
+
+    it 'replays a same-key message that committed while this request waited for the lock, even at a moved revision' do
+      winner = nil
+      fired = false
+      # Runs once, right after this request's first idempotency lookup misses: a concurrent request with the same key
+      # commits its message and the conversation is then taken over, all before this request takes the lock.
+      callback = lambda do |*, payload|
+        next if fired || !payload[:sql].start_with?('SELECT') || payload[:sql].exclude?('client_idempotency_key')
+
+        fired = true
+        winner = create(:message, conversation: conversation, account: account, inbox: inbox,
+                                  message_type: :outgoing, client_idempotency_key: 'intent-9')
+        Conversation.find(conversation.id).open!
+      end
+
+      ActiveSupport::Notifications.subscribed(callback, 'sql.active_record') do
+        post messages_url, params: { content: 'hello', expected_status_revision: 2, client_idempotency_key: 'intent-9' },
+                           headers: bot_headers, as: :json
+      end
+
+      expect(response).to have_http_status(:success)
+      expect(response.parsed_body['id']).to eq(winner.id)
+      expect(conversation.messages.count).to eq(1)
+    end
+
+    [nil, false, '', 'two', '2.5'].each do |malformed|
+      it "rejects #{malformed.inspect} as a revision instead of creating unguarded" do
+        post messages_url, params: { content: 'hello', expected_status_revision: malformed }, headers: bot_headers, as: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(conversation.messages.count).to eq(0)
+      end
+    end
   end
 
   describe 'GET /api/v1/accounts/{account.id}/conversations/:id/messages' do

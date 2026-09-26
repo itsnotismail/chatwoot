@@ -12,6 +12,11 @@ class Conversations::MessageWindowService
     last_message_in_messaging_window?(messaging_window)
   end
 
+  # The timestamp the window is measured from.
+  def last_incoming_message_at
+    last_incoming_message&.created_at
+  end
+
   private
 
   def messaging_window
