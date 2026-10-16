@@ -16,6 +16,7 @@ import { BUS_EVENTS } from 'shared/constants/busEvents';
 import Button from 'dashboard/components-next/button/Button.vue';
 import SidebarGroup from './SidebarGroup.vue';
 import SidebarProfileMenu from './SidebarProfileMenu.vue';
+import SidebarComvorLink from './SidebarComvorLink.vue';
 import SidebarChangelogCard from './SidebarChangelogCard.vue';
 import SidebarChangelogButton from './SidebarChangelogButton.vue';
 import ChannelLeaf from './ChannelLeaf.vue';
@@ -768,6 +769,12 @@ const menuItems = computed(() => {
             @show-create-account-modal="emit('showCreateAccountModal')"
           />
         </template>
+      </div>
+      <div
+        class="flex"
+        :class="isEffectivelyCollapsed ? 'justify-center' : 'px-2'"
+      >
+        <SidebarComvorLink :is-collapsed="isEffectivelyCollapsed" />
       </div>
       <div
         class="flex gap-2"
