@@ -73,6 +73,37 @@ RSpec.describe SamlUserBuilder do
       end
     end
 
+    context 'when a new team member signs in for the first time' do
+      let!(:facebook_inbox) { create(:inbox, account: account) }
+      let!(:website_inbox) { create(:inbox, account: account) }
+
+      it 'adds them to every inbox of the account' do
+        user = builder.perform
+        expect(facebook_inbox.reload.members).to include(user)
+        expect(website_inbox.reload.members).to include(user)
+      end
+
+      it 'turns on push alerts for new conversations and new messages in assigned conversations' do
+        user = builder.perform
+        setting = user.notification_settings.find_by(account_id: account.id)
+        expect(setting.push_conversation_creation?).to be(true)
+        expect(setting.push_assigned_conversation_new_message?).to be(true)
+        expect(setting.push_conversation_assignment?).to be(true)
+      end
+    end
+
+    context 'when an existing team member signs in again' do
+      let!(:inbox) { create(:inbox, account: account) }
+
+      it 'does not re-add them to an inbox the owner removed them from' do
+        user = builder.perform
+        InboxMember.where(user: user, inbox: inbox).destroy_all
+
+        described_class.new(auth_hash, account.id).perform
+        expect(inbox.reload.members).not_to include(user)
+      end
+    end
+
     context 'when user already exists' do
       let!(:existing_user) { create(:user, email: email, account: account) }
 
