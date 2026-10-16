@@ -63,6 +63,38 @@ describe Facebook::SendOnFacebookService do
         expect(message.reload.external_error).to eq('Error validating access token')
       end
 
+      it 'logs the Graph error fields that the stored external_error drops' do
+        message = create(:message, message_type: 'outgoing', inbox: facebook_inbox, account: account, conversation: conversation)
+        allow(bot).to receive(:deliver).and_raise(
+          Facebook::Messenger::FacebookError.new('message' => 'Invalid parameter', 'code' => 100,
+                                                 'error_subcode' => 2_018_001, 'type' => 'OAuthException',
+                                                 'fbtrace_id' => 'AbCdEf123')
+        )
+        allow(Rails.logger).to receive(:error)
+
+        described_class.new(message: message).perform
+
+        expect(message.reload.external_error).to eq('Invalid parameter')
+        expect(Rails.logger).to have_received(:error).with(
+          a_string_including('send failed', 'code=100', 'subcode=2018001', 'type="OAuthException"',
+                             'fbtrace_id="AbCdEf123"', 'tag=ACCOUNT_UPDATE', 'page_rows=1',
+                             "token_channel_id=#{facebook_channel.id}", "inbox_channel_id=#{facebook_channel.id}")
+        )
+      end
+
+      it 'logs which account the page token came from when the page is connected in more than one account' do
+        other_account_page = create(:channel_facebook_page, page_id: facebook_channel.page_id)
+        message = create(:message, message_type: 'outgoing', inbox: facebook_inbox, account: account, conversation: conversation)
+        allow(bot).to receive(:deliver).and_raise(Facebook::Messenger::FacebookError.new('message' => 'Invalid parameter', 'code' => 100))
+        allow(Rails.logger).to receive(:error)
+
+        described_class.new(message: message).perform
+
+        expect(Rails.logger).to have_received(:error).with(
+          a_string_including('page_rows=2', "token_channel_id=#{other_account_page.id}", "inbox_channel_id=#{facebook_channel.id}")
+        )
+      end
+
       it 'if message with attachment is sent from chatwoot and is outgoing' do
         message = build(:message, message_type: 'outgoing', inbox: facebook_inbox, account: account, conversation: conversation)
         attachment = message.attachments.new(account_id: message.account_id, file_type: :image)
