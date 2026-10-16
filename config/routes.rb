@@ -558,6 +558,9 @@ Rails.application.routes.draw do
     post 'portal/agent_session', to: 'portal_agent_sessions#create'
   end
 
+  # Comvor: the portal's sign-out finishes here so the workspace session ends too (see the controller).
+  get 'comvor/sign_out', to: 'comvor_workspace_sign_outs#show'
+
   get 'hc/:slug', to: 'public/api/v1/portals#show'
   get 'hc/:slug/sitemap.xml', to: 'public/api/v1/portals#sitemap'
   get 'hc/:slug/:locale', to: 'public/api/v1/portals#show'
