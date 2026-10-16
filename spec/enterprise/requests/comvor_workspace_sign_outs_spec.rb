@@ -36,6 +36,18 @@ RSpec.describe 'Comvor workspace sign-out', type: :request do
     expect(response).to redirect_to(portal_login)
   end
 
+  it 'continues to a path on this host, such as the SSO sign-in, after ending the session' do
+    get '/comvor/sign_out', params: { return_to: '/app/login/sso?target=mobile' }, headers: session_cookie
+
+    expect(response).to redirect_to('/app/login/sso?target=mobile')
+    expect(user.reload.tokens).not_to have_key(auth_headers['client'])
+  end
+
+  it 'does not treat a protocol-relative URL as a path on this host' do
+    get '/comvor/sign_out', params: { return_to: '//evil.example/phish' }, headers: session_cookie
+    expect(response).to redirect_to('/app/login')
+  end
+
   it 'never redirects to another site' do
     get '/comvor/sign_out', params: { return_to: 'https://evil.example/phish' }, headers: session_cookie
     expect(response).to redirect_to('/app/login')

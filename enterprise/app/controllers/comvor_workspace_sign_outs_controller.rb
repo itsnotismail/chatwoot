@@ -6,7 +6,8 @@
 # tapped "Open your workspace", and landed in the previous person's inbox: seen live as an agent landing in
 # the owner's administrator session (app review 2026-10-17, L13).
 #
-# The portal now finishes its own sign-out by sending the browser here. The session lives in the
+# The portal sends the browser here before opening the workspace for staff (return_to=/app/login/sso), and
+# can finish its own sign-out here (return_to on the portal origin). The session lives in the
 # cw_d_session_info cookie on this host, which only this host can clear, so this endpoint revokes the
 # token it names and expires the cookies, then returns to the portal. A GET that only ends a session, the
 # same shape as the portal's own /portal/saml/logout. return_to must be on the portal's origin, taken from
@@ -39,12 +40,22 @@ class ComvorWorkspaceSignOutsController < ApplicationController
   end
 
   def safe_return_to
-    target = URI.parse(params[:return_to].to_s)
+    raw = params[:return_to].to_s
+    return raw if same_host_path?(raw)
+
+    target = URI.parse(raw)
     return unless %w[http https].include?(target.scheme) && target.host
 
     target.to_s if portal_origins.include?(origin_of(target))
   rescue URI::InvalidURIError
     nil
+  end
+
+  # A path on this host, e.g. /app/login/sso: the portal's "Open your workspace" link for staff signs out
+  # whoever was last signed in on this browser and then opens the SSO sign-in, so a shared phone never opens
+  # the previous person's inbox. Protocol-relative (//host) and backslash tricks are not paths.
+  def same_host_path?(raw)
+    raw.start_with?('/') && !raw.start_with?('//', '/\\')
   end
 
   def portal_origins
