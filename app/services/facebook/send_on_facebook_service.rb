@@ -15,6 +15,7 @@ class Facebook::SendOnFacebookService < Base::SendOnChannelService
     end
   rescue Facebook::Messenger::FacebookError => e
     # TODO : handle specific errors or else page will get disconnected
+    log_facebook_send_error(e)
     handle_facebook_error(e)
     Messages::StatusUpdateService.new(message, 'failed', e.message).perform
   end
@@ -107,6 +108,35 @@ class Facebook::SendOnFacebookService < Base::SendOnChannelService
   def sent_first_outgoing_message_after_24_hours?
     # we can send max 1 message after 24 hour window
     conversation.messages.outgoing.where('id > ?', conversation.last_incoming_message.id).count == 1
+  end
+
+  # The facebook-messenger gem raises on EVERY Graph error response, so this is
+  # the only place the error body is visible - the parsed_result['error'] branch
+  # in send_message_to_facebook never runs for a Graph error. e.message alone
+  # ("Invalid parameter") does not identify the cause; code, subcode and
+  # fbtrace_id do, and nothing else records them. The token is looked up by
+  # page_id across ALL accounts (ChatwootFbProvider#access_token_for uses
+  # .last), so log which row's token was used. Ids only: never the token.
+  def log_facebook_send_error(error)
+    Rails.logger.error(
+      'Facebook::SendOnFacebookService: send failed ' \
+      "page_id=#{channel.page_id} inbox_id=#{inbox.id} message_id=#{message.id} " \
+      "#{graph_error_fields(error)} #{send_request_fields} #{token_source_fields}"
+    )
+  end
+
+  def graph_error_fields(error)
+    "code=#{error.code.inspect} subcode=#{error.subcode.inspect} type=#{error.type.inspect} " \
+      "fbtrace_id=#{error.fbtrace_id.inspect} message=#{error.message.inspect} user_msg=#{error.user_msg.inspect}"
+  end
+
+  def send_request_fields
+    "messaging_type=MESSAGE_TAG tag=#{message_tag} recipient_id=#{contact.get_source_id(inbox.id).inspect}"
+  end
+
+  def token_source_fields
+    pages = Channel::FacebookPage.where(page_id: channel.page_id)
+    "page_rows=#{pages.count} token_channel_id=#{pages.last&.id} inbox_channel_id=#{channel.id}"
   end
 
   def handle_facebook_error(exception)

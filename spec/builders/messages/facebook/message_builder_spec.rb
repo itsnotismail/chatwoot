@@ -59,6 +59,45 @@ describe Messages::Facebook::MessageBuilder do
       expect(contact.name).to eq(default_name)
     end
 
+    it 'logs the Graph error fields when the profile fetch falls back to the default name' do
+      allow(Koala::Facebook::API).to receive(:new).and_return(fb_object)
+      allow(fb_object).to receive(:get_object).and_raise(
+        Koala::Facebook::ClientError.new(400, { error: { fbtrace_id: 'BodyTrace9' } }.to_json,
+                                         { 'type' => 'OAuthException', 'message' => 'Invalid parameter',
+                                           'code' => 100, 'error_subcode' => 33 })
+      )
+      allow(Rails.logger).to receive(:warn)
+
+      message_builder
+
+      expect(facebook_channel.inbox.contacts.first.name).to eq('John Doe')
+      expect(Rails.logger).to have_received(:warn).with(
+        a_string_including('contact profile fallback', 'reason=client_error', 'code=100', 'subcode=33',
+                           'fbtrace_id="BodyTrace9"', "page_id=#{facebook_channel.page_id}")
+      )
+    end
+
+    it 'logs the returned key names but not their values when the profile has no first name' do
+      allow(Koala::Facebook::API).to receive(:new).and_return(fb_object)
+      allow(fb_object).to receive(:get_object).and_return({ 'id' => '4242', 'profile_pic' => 'https://pic.example/secret.png' })
+      allow(Rails.logger).to receive(:warn)
+
+      message_builder
+
+      expect(Rails.logger).to have_received(:warn).with(a_string_including('reason=missing_name', 'keys=["id", "profile_pic"]'))
+      expect(Rails.logger).not_to have_received(:warn).with(a_string_including('pic.example'))
+    end
+
+    it 'logs a fallback when the profile fetch returns nothing at all' do
+      allow(Koala::Facebook::API).to receive(:new).and_return(fb_object)
+      allow(fb_object).to receive(:get_object).and_return(nil)
+      allow(Rails.logger).to receive(:warn)
+
+      message_builder
+
+      expect(Rails.logger).to have_received(:warn).with(a_string_including('reason=missing_name', 'keys=[]'))
+    end
+
     it 'marks echo messages as external echo messages' do
       allow(Koala::Facebook::API).to receive(:new).and_return(fb_object)
       allow(fb_object).to receive(:get_object).and_return(

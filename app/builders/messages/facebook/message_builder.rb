@@ -133,6 +133,7 @@ class Messages::Facebook::MessageBuilder < Messages::Messenger::MessageBuilder
   # rubocop:disable Metrics/AbcSize
   # rubocop:disable Metrics/MethodLength
   def contact_params
+    fallback_logged = false
     begin
       k = Koala::Facebook::API.new(@inbox.channel.page_access_token) if @inbox.facebook?
       result = k.get_object(@sender_id) || {}
@@ -143,6 +144,7 @@ class Messages::Facebook::MessageBuilder < Messages::Messenger::MessageBuilder
       raise
     rescue Koala::Facebook::ClientError => e
       result = {}
+      fallback_logged = log_contact_profile_fallback('client_error', error: e)
       # OAuthException, code: 100, error_subcode: 2018218, message: (#100) No profile available for this user
       # We don't need to capture this error as we don't care about contact params in case of echo messages
       if e.message.include?('2018218')
@@ -152,10 +154,52 @@ class Messages::Facebook::MessageBuilder < Messages::Messenger::MessageBuilder
       end
     rescue StandardError => e
       result = {}
+      fallback_logged = log_contact_profile_fallback('standard_error', error: e)
       ChatwootExceptionTracker.new(e, account: @inbox.account).capture_exception
     end
+    log_missing_name_fallback(result, already_logged: fallback_logged)
     process_contact_params_result(result)
   end
   # rubocop:enable Metrics/AbcSize
   # rubocop:enable Metrics/MethodLength
+
+  # A contact named "John Doe" means the profile fetch above yielded no
+  # first_name (process_contact_params_result's fallback), and nothing recorded
+  # why in one place: 2018218 went to warn, other client errors to the tracker,
+  # and a successful fetch that simply lacked a name left no trace at all. One
+  # line per fallback, with the Graph error fields when there is an error and
+  # the returned key NAMES when there is not. Ids only: no token, no profile
+  # values.
+  def log_contact_profile_fallback(reason, error: nil, result: {})
+    details = "reason=#{reason} inbox_id=#{@inbox.id} page_id=#{@inbox.channel.try(:page_id)} " \
+              "sender_id=#{@sender_id} outgoing_echo=#{@outgoing_echo}"
+    details += if error.is_a?(Koala::Facebook::APIError)
+                 " code=#{error.fb_error_code.inspect} subcode=#{error.fb_error_subcode.inspect} " \
+                   "type=#{error.fb_error_type.inspect} fbtrace_id=#{koala_fbtrace_id(error).inspect} " \
+                   "message=#{error.fb_error_message.inspect}"
+               elsif error
+                 " error_class=#{error.class.name} message=#{error.message.inspect}"
+               else
+                 " keys=#{result.keys.map(&:to_s).sort.inspect}"
+               end
+    Rails.logger.warn("Messages::Facebook::MessageBuilder: contact profile fallback #{details}")
+    true
+  end
+
+  # A fetch that succeeded (or returned nil) but carried no first_name produces
+  # the same "John Doe" with no error to explain it.
+  def log_missing_name_fallback(result, already_logged:)
+    return if already_logged || result['first_name'].present?
+
+    log_contact_profile_fallback('missing_name', result: result)
+  end
+
+  # Koala fills fb_error_trace_id from the x-fb-trace-id header only; a Graph
+  # error BODY carries the same id as error.fbtrace_id. Prefer the header, fall
+  # back to the body.
+  def koala_fbtrace_id(error)
+    error.fb_error_trace_id.presence || JSON.parse(error.response_body.to_s).dig('error', 'fbtrace_id')
+  rescue JSON::ParserError
+    nil
+  end
 end
