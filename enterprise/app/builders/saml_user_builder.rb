@@ -77,6 +77,25 @@ class SamlUserBuilder
 
     # Handle role mappings if configured
     apply_role_mappings(account_user, account)
+
+    welcome_new_team_member(account) if account_user.previously_new_record?
+  end
+
+  # Comvor: staff are invited from the Comvor portal and arrive here on their first sign-in, never through
+  # Chatwoot's own agent screens, so nothing else adds them to an inbox or turns on alerts for new chats.
+  # Chatwoot shows an agent only the conversations of inboxes they belong to and alerts only inbox members
+  # about a new conversation, so without this a new team member saw an empty inbox and was never told a
+  # customer had written (app review 2026-10-17, L1/L2). First sign-in only: an owner who later removes
+  # someone from an inbox is not overridden on their next sign-in.
+  def welcome_new_team_member(account)
+    account.inboxes.find_each { |inbox| InboxMember.find_or_create_by!(user: @user, inbox: inbox) }
+
+    setting = @user.notification_settings.find_by(account_id: account.id)
+    return unless setting
+
+    setting.push_conversation_creation = true
+    setting.push_assigned_conversation_new_message = true
+    setting.save!
   end
 
   def apply_role_mappings(account_user, account)
