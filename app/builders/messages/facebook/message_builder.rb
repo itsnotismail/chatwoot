@@ -123,8 +123,10 @@ class Messages::Facebook::MessageBuilder < Messages::Messenger::MessageBuilder
   end
 
   def process_contact_params_result(result)
+    name = result['name'].presence || [result['first_name'], result['last_name']].compact_blank.join(' ').presence || 'John Doe'
+
     {
-      name: "#{result['first_name'] || 'John'} #{result['last_name'] || 'Doe'}",
+      name: name,
       account_id: @inbox.account_id,
       avatar_url: result['profile_pic']
     }
@@ -189,7 +191,7 @@ class Messages::Facebook::MessageBuilder < Messages::Messenger::MessageBuilder
   # A fetch that succeeded (or returned nil) but carried no first_name produces
   # the same "John Doe" with no error to explain it.
   def log_missing_name_fallback(result, already_logged:)
-    return if already_logged || result['first_name'].present?
+    return if already_logged || %w[name first_name last_name].any? { |key| result[key].present? }
 
     log_contact_profile_fallback('missing_name', result: result)
   end
