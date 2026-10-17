@@ -116,6 +116,16 @@ describe Messages::Facebook::MessageBuilder do
       expect(Rails.logger).to have_received(:warn).with(a_string_including('reason=missing_name', 'keys=[]'))
     end
 
+    it 'does not log a fallback when the profile carries only the full name' do
+      allow(Koala::Facebook::API).to receive(:new).and_return(fb_object)
+      allow(fb_object).to receive(:get_object).and_return({ 'id' => '4242', 'name' => 'Aisha Ali' })
+      allow(Rails.logger).to receive(:warn)
+
+      message_builder
+
+      expect(Rails.logger).not_to have_received(:warn).with(a_string_including('reason=missing_name'))
+    end
+
     it 'marks echo messages as external echo messages' do
       allow(Koala::Facebook::API).to receive(:new).and_return(fb_object)
       allow(fb_object).to receive(:get_object).and_return(
