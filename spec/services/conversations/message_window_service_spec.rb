@@ -625,4 +625,44 @@ RSpec.describe Conversations::MessageWindowService do
       expect(service.can_reply?).to be true
     end
   end
+
+  describe '#window_ends_at' do
+    before do
+      stub_request(:post, /graph.facebook.com/)
+      GlobalConfig.clear_cache
+    end
+
+    let!(:facebook_channel) { create(:channel_facebook_page) }
+    let!(:facebook_inbox) { create(:inbox, channel: facebook_channel, account: facebook_channel.account) }
+    let!(:conversation) { create(:conversation, inbox: facebook_inbox, account: facebook_channel.account) }
+
+    def incoming_at(time)
+      create(:message, account: conversation.account, inbox: facebook_inbox, conversation: conversation, created_at: time)
+    end
+
+    it 'is 24 hours after the last incoming message on Messenger' do
+      message = incoming_at(3.hours.ago)
+
+      expect(described_class.new(conversation).window_ends_at).to eq(message.reload.created_at + 24.hours)
+    end
+
+    it 'is 7 days after the last incoming message when the Messenger HUMAN_AGENT tag is enabled' do
+      with_modified_env ENABLE_MESSENGER_CHANNEL_HUMAN_AGENT: 'true' do
+        message = incoming_at(3.hours.ago)
+
+        expect(described_class.new(conversation).window_ends_at).to eq(message.reload.created_at + 7.days)
+      end
+    end
+
+    it 'is nil when the customer never wrote' do
+      expect(described_class.new(conversation).window_ends_at).to be_nil
+    end
+
+    it 'is nil for a channel without a window' do
+      widget_conversation = create(:conversation, inbox: create(:channel_widget).inbox)
+      create(:message, account: widget_conversation.account, inbox: widget_conversation.inbox, conversation: widget_conversation)
+
+      expect(described_class.new(widget_conversation).window_ends_at).to be_nil
+    end
+  end
 end

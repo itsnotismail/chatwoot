@@ -392,6 +392,42 @@ RSpec.describe Message do
         expect(conversation.reload.waiting_since).to be_within(1.second).of(original_waiting_since)
       end
     end
+
+    context 'when a bot message carries the preserve_waiting_since content attribute' do
+      let(:agent_bot) { create(:agent_bot, account: conversation.account) }
+      let(:original_waiting_since) { 45.minutes.ago }
+
+      before { conversation.update!(waiting_since: original_waiting_since) }
+
+      it 'keeps waiting_since for the marked bot message' do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent_bot,
+                         content_attributes: { preserve_waiting_since: true })
+
+        expect(conversation.reload.waiting_since).to be_within(1.second).of(original_waiting_since)
+      end
+
+      it 'keeps waiting_since when the marker arrives as a string, as JSON from the api does' do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent_bot,
+                         content_attributes: { 'preserve_waiting_since' => 'true' })
+
+        expect(conversation.reload.waiting_since).to be_within(1.second).of(original_waiting_since)
+      end
+
+      it 'still clears waiting_since for an unmarked bot message' do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent_bot,
+                         content_attributes: { preserve_waiting_since: false })
+
+        expect(conversation.reload.waiting_since).to be_nil
+      end
+
+      it 'is cleared by the human reply that follows, which counts as the reply' do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent_bot,
+                         content_attributes: { preserve_waiting_since: true })
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent)
+
+        expect(conversation.reload.waiting_since).to be_nil
+      end
+    end
   end
 
   context 'with webhook_data' do

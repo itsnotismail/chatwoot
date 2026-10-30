@@ -12,6 +12,13 @@ class Conversations::MessageWindowService
     last_message_in_messaging_window?(messaging_window)
   end
 
+  # When the reply window closes: nil for a channel without a window, or when the customer never wrote.
+  def window_ends_at
+    return if messaging_window.blank? || last_incoming_message.nil?
+
+    last_incoming_message.created_at + messaging_window
+  end
+
   # The timestamp the window is measured from.
   def last_incoming_message_at
     last_incoming_message&.created_at
