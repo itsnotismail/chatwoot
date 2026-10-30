@@ -106,6 +106,40 @@ RSpec.describe 'Conversation reply eligibility API', type: :request do
       end
     end
 
+    context 'when the caller asks for the window end' do
+      let(:admin) { create(:user, account: account, role: :administrator) }
+
+      def window_url(conv)
+        "#{eligibility_url(conv)}?include=window_ends_at"
+      end
+
+      it 'returns the WhatsApp window end, 24 hours after the last incoming message' do
+        incoming = create(:message, message_type: :incoming, conversation: conversation, account: account, inbox: inbox,
+                                    created_at: 2.hours.ago)
+
+        get window_url(conversation), headers: admin.create_new_auth_token, as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body['window_ends_at']).to eq((incoming.reload.created_at + 24.hours).iso8601(6))
+      end
+
+      it 'returns a null window end for a channel without a window' do
+        widget_conversation = create(:conversation, account: account, inbox: create(:channel_widget, account: account).inbox)
+        create(:message, message_type: :incoming, conversation: widget_conversation, account: account,
+                         inbox: widget_conversation.inbox)
+
+        get window_url(widget_conversation), headers: admin.create_new_auth_token, as: :json
+
+        expect(response.parsed_body).to include('window_ends_at' => nil)
+      end
+
+      it 'returns a null window end when the customer never wrote' do
+        get window_url(conversation), headers: admin.create_new_auth_token, as: :json
+
+        expect(response.parsed_body).to include('window_ends_at' => nil)
+      end
+    end
+
     context 'when it is an administrator' do
       it 'returns the eligibility without a bot connection' do
         admin = create(:user, account: account, role: :administrator)
