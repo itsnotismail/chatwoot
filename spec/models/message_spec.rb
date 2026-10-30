@@ -420,12 +420,28 @@ RSpec.describe Message do
         expect(conversation.reload.waiting_since).to be_nil
       end
 
-      it 'is cleared by the human reply that follows, which counts as the reply' do
+      it 'is cleared by the human reply that follows, which reports the reply time from the original wait' do
+        # A human answered this chat earlier, so the next human reply is not a first reply and
+        # takes the REPLY_CREATED path, the line the marker changes.
+        conversation.update!(first_reply_created_at: 2.hours.ago)
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent_bot,
+                         content_attributes: { preserve_waiting_since: true })
+        allow(Rails.configuration.dispatcher).to receive(:dispatch)
+
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent)
+
+        expect(Rails.configuration.dispatcher).to have_received(:dispatch)
+          .with(Events::Types::REPLY_CREATED, anything, hash_including(waiting_since: be_within(1.second).of(original_waiting_since)))
+        expect(conversation.reload.waiting_since).to be_nil
+      end
+
+      it 'is cleared by the first human reply in a chat only the bot had answered' do
         create(:message, conversation: conversation, message_type: :outgoing, sender: agent_bot,
                          content_attributes: { preserve_waiting_since: true })
         create(:message, conversation: conversation, message_type: :outgoing, sender: agent)
 
         expect(conversation.reload.waiting_since).to be_nil
+        expect(conversation.first_reply_created_at).to be_present
       end
     end
   end
