@@ -392,6 +392,58 @@ RSpec.describe Message do
         expect(conversation.reload.waiting_since).to be_within(1.second).of(original_waiting_since)
       end
     end
+
+    context 'when a bot message carries the preserve_waiting_since content attribute' do
+      let(:agent_bot) { create(:agent_bot, account: conversation.account) }
+      let(:original_waiting_since) { 45.minutes.ago }
+
+      before { conversation.update!(waiting_since: original_waiting_since) }
+
+      it 'keeps waiting_since for the marked bot message' do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent_bot,
+                         content_attributes: { preserve_waiting_since: true })
+
+        expect(conversation.reload.waiting_since).to be_within(1.second).of(original_waiting_since)
+      end
+
+      it 'keeps waiting_since when the marker arrives as a string, as JSON from the api does' do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent_bot,
+                         content_attributes: { 'preserve_waiting_since' => 'true' })
+
+        expect(conversation.reload.waiting_since).to be_within(1.second).of(original_waiting_since)
+      end
+
+      it 'still clears waiting_since for an unmarked bot message' do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent_bot,
+                         content_attributes: { preserve_waiting_since: false })
+
+        expect(conversation.reload.waiting_since).to be_nil
+      end
+
+      it 'is cleared by the human reply that follows, which reports the reply time from the original wait' do
+        # A human answered this chat earlier, so the next human reply is not a first reply and
+        # takes the REPLY_CREATED path, the line the marker changes.
+        conversation.update!(first_reply_created_at: 2.hours.ago)
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent_bot,
+                         content_attributes: { preserve_waiting_since: true })
+        allow(Rails.configuration.dispatcher).to receive(:dispatch)
+
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent)
+
+        expect(Rails.configuration.dispatcher).to have_received(:dispatch)
+          .with(Events::Types::REPLY_CREATED, anything, hash_including(waiting_since: be_within(1.second).of(original_waiting_since)))
+        expect(conversation.reload.waiting_since).to be_nil
+      end
+
+      it 'is cleared by the first human reply in a chat only the bot had answered' do
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent_bot,
+                         content_attributes: { preserve_waiting_since: true })
+        create(:message, conversation: conversation, message_type: :outgoing, sender: agent)
+
+        expect(conversation.reload.waiting_since).to be_nil
+        expect(conversation.first_reply_created_at).to be_present
+      end
+    end
   end
 
   context 'with webhook_data' do

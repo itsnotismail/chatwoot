@@ -352,12 +352,18 @@ class Message < ApplicationRecord
     end
 
     # Bot responses also clear waiting_since (simpler than checking on next customer message)
-    conversation.update(waiting_since: nil) if bot_response? && !preserve_waiting_since
+    conversation.update(waiting_since: nil) if bot_response? && !preserve_waiting_since && !preserve_waiting_since_marker?
   end
 
   def set_waiting_since_on_incoming_message
     # Set waiting_since when customer sends a message (if currently blank)
     conversation.update(waiting_since: created_at) if incoming? && conversation.waiting_since.blank?
+  end
+
+  # Comvor: the REST form of preserve_waiting_since. The api marks its hand-off note with it, so a chat
+  # handed to the team stays waiting (and in the Unattended view) until a human replies.
+  def preserve_waiting_since_marker?
+    ActiveModel::Type::Boolean.new.cast(content_attributes&.dig(:preserve_waiting_since)) == true
   end
 
   def human_response?
