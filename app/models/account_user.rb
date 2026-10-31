@@ -37,6 +37,7 @@ class AccountUser < ApplicationRecord
   accepts_nested_attributes_for :account
 
   after_create_commit :notify_creation, :create_notification_setting
+  after_create_commit :join_account_inboxes, if: -> { InboxMember.auto_membership? }
   after_destroy :notify_deletion, :remove_user_from_account
   after_save :update_presence_in_redis, if: :saved_change_to_availability?
 
@@ -47,6 +48,14 @@ class AccountUser < ApplicationRecord
     setting.selected_email_flags = [:email_conversation_assignment]
     setting.selected_push_flags = [:push_conversation_assignment]
     setting.save!
+  end
+
+  # Comvor: a new team member joins every inbox of the account, so they see its chats and are alerted to new
+  # ones. Only on joining the account: an owner who later removes someone from an inbox is not overridden.
+  def join_account_inboxes
+    joined = account.inboxes.where.not(id: InboxMember.where(user_id: user_id).select(:inbox_id))
+                    .count { |inbox| InboxMember.add_quietly(inbox, user_id) }
+    account.update_cache_key('inbox') if joined.positive?
   end
 
   def remove_user_from_account

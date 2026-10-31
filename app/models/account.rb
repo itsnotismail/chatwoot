@@ -184,9 +184,13 @@ class Account < ApplicationRecord
     super.presence || ENV.fetch('MAILER_SENDER_EMAIL') { GlobalConfig.get('MAILER_SUPPORT_EMAIL')['MAILER_SUPPORT_EMAIL'] }
   end
 
+  # Comvor: the community edition honours an agent seat cap the Platform API set
+  # in accounts.limits, so AgentsController#validate_limit refuses agents past
+  # the plan's seats without the enterprise module. Enterprise's override reads
+  # the same key, so both editions enforce the same number.
   def usage_limits
     {
-      agents: ChatwootApp.max_limit.to_i,
+      agents: (self[:limits] || {})['agents'].presence&.to_i || ChatwootApp.max_limit.to_i,
       inboxes: ChatwootApp.max_limit.to_i
     }
   end
