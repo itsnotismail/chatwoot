@@ -49,6 +49,8 @@ RSpec.describe InboxMember do
   end
 
   context 'when the flag is off' do
+    around { |example| with_modified_env(COMVOR_AUTO_INBOX_MEMBERSHIP: 'false') { example.run } }
+
     it 'leaves a new inbox with no members' do
       inbox = create(:inbox, account: account)
       expect(inbox.reload.members).to be_empty
@@ -62,6 +64,8 @@ RSpec.describe InboxMember do
   end
 
   describe '.missing_account_pairs' do
+    around { |example| with_modified_env(COMVOR_AUTO_INBOX_MEMBERSHIP: 'false') { example.run } }
+
     it 'lists each account user missing from each inbox, and nothing for full inboxes' do
       account = create(:account)
       owner = create(:user, account: account, role: :administrator)
