@@ -6,6 +6,7 @@
 #
 #   bundle exec rake comvor:ops:backfill_inbox_members ACCOUNT_ID=12
 #   bundle exec rake comvor:ops:backfill_inbox_members ACCOUNT_ID=12 APPLY=true
+#   bundle exec rake comvor:ops:backfill_inbox_members ACCOUNT_ID=12 APPLY=true SKIP=34:7,35:7   (inbox:user pairs left out)
 
 namespace :comvor do
   namespace :ops do
@@ -13,7 +14,8 @@ namespace :comvor do
     task backfill_inbox_members: :environment do
       account = Account.find(ENV.fetch('ACCOUNT_ID'))
       apply = ActiveModel::Type::Boolean.new.cast(ENV.fetch('APPLY', false))
-      pairs = InboxMember.missing_account_pairs(account)
+      skip = ENV.fetch('SKIP', '').split(',').map(&:strip).reject(&:empty?)
+      pairs = InboxMember.missing_account_pairs(account).reject { |inbox, user_id| skip.include?("#{inbox.id}:#{user_id}") }
 
       pairs.each { |inbox, user_id| puts "account=#{account.id} inbox=#{inbox.id} (#{inbox.name}) user=#{user_id}" }
       puts "#{pairs.size} missing pair(s)#{apply ? ', adding' : ', nothing changed (APPLY=true to add)'}"

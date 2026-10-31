@@ -99,7 +99,8 @@ class Inbox < ApplicationRecord
   # owner's pick, so an agent the owner leaves out stays out.
   def add_account_users_as_members
     user_ids = account.account_users.pluck(:user_id) - inbox_members.pluck(:user_id)
-    add_members(user_ids) if user_ids.any?
+    added = user_ids.count { |user_id| InboxMember.add_quietly(self, user_id) }
+    update_account_cache if added.positive?
   end
 
   # Removes multiple members from the inbox

@@ -29,6 +29,7 @@ export default {
   data() {
     return {
       selectedAgentIds: [],
+      selectionTouched: false,
       isCreating: false,
     };
   },
@@ -57,20 +58,25 @@ export default {
     // Comvor: start from the inbox's current members. Where the deployment adds
     // every account user to a new inbox, the owner removes someone rather than
     // having to add everyone, and saving the step keeps that choice.
+    // A pick the owner made before the members arrived is kept.
     try {
       const { data } = await InboxMembersAPI.show(this.$route.params.inbox_id);
-      this.selectedAgentIds = data.payload.map(({ id }) => id);
+      if (!this.selectionTouched) {
+        this.selectedAgentIds = data.payload.map(({ id }) => id);
+      }
     } catch {
-      this.selectedAgentIds = [];
+      // Keep whatever is selected: the step starts empty as upstream does.
     }
   },
   methods: {
     handleAgentAdd({ value }) {
+      this.selectionTouched = true;
       if (!this.selectedAgentIds.includes(value)) {
         this.selectedAgentIds.push(value);
       }
     },
     handleAgentRemove(index) {
+      this.selectionTouched = true;
       this.selectedAgentIds.splice(index, 1);
     },
     async addAgents() {

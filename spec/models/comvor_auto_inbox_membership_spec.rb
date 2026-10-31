@@ -48,6 +48,29 @@ RSpec.describe InboxMember do
     end
   end
 
+  context 'when adding a membership fails (a race on the unique pair)' do
+    around { |example| with_modified_env(COMVOR_AUTO_INBOX_MEMBERSHIP: 'true') { example.run } }
+
+    before { allow(described_class).to receive(:create!).and_raise(ActiveRecord::RecordNotUnique) }
+
+    it 'still creates the inbox and dispatches its create event' do
+      allow(Rails.configuration.dispatcher).to receive(:dispatch)
+      inbox = nil
+      with_modified_env(ENABLE_INBOX_EVENTS: 'true') do
+        expect { inbox = create(:inbox, account: account) }.not_to raise_error
+      end
+      expect(Rails.configuration.dispatcher).to have_received(:dispatch).with(Events::Types::INBOX_CREATED, any_args)
+      expect(inbox.reload).to be_persisted
+    end
+
+    it "still creates the new team member's notification settings" do
+      create(:inbox, account: account)
+      newcomer = create(:user)
+      expect { create(:account_user, account: account, user: newcomer) }.not_to raise_error
+      expect(newcomer.notification_settings.find_by(account_id: account.id)).to be_present
+    end
+  end
+
   context 'when the flag is off' do
     around { |example| with_modified_env(COMVOR_AUTO_INBOX_MEMBERSHIP: 'false') { example.run } }
 

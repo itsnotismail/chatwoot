@@ -46,6 +46,20 @@ describe('AddAgents', () => {
     expect(wrapper.vm.selectedAgentIds).toEqual([]);
   });
 
+  it('keeps a pick the owner made before the members arrived', async () => {
+    let resolveShow;
+    InboxMembersAPI.show.mockReturnValue(
+      new Promise(resolve => {
+        resolveShow = resolve;
+      })
+    );
+    const wrapper = mountWizard();
+    wrapper.vm.handleAgentAdd({ value: 2 });
+    resolveShow({ data: { payload: [{ id: 1 }, { id: 2 }] } });
+    await flushPromises();
+    expect(wrapper.vm.selectedAgentIds).toEqual([2]);
+  });
+
   it('starts empty when the members cannot be read', async () => {
     InboxMembersAPI.show.mockRejectedValue(new Error('boom'));
     const wrapper = mountWizard();

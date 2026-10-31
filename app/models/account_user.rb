@@ -53,9 +53,9 @@ class AccountUser < ApplicationRecord
   # Comvor: a new team member joins every inbox of the account, so they see its chats and are alerted to new
   # ones. Only on joining the account: an owner who later removes someone from an inbox is not overridden.
   def join_account_inboxes
-    account.inboxes.find_each do |inbox|
-      inbox.add_members([user_id]) unless inbox.inbox_members.exists?(user_id: user_id)
-    end
+    joined = account.inboxes.where.not(id: InboxMember.where(user_id: user_id).select(:inbox_id))
+                    .count { |inbox| InboxMember.add_quietly(inbox, user_id) }
+    account.update_cache_key('inbox') if joined.positive?
   end
 
   def remove_user_from_account
