@@ -16,6 +16,22 @@
 
 class InboxMember < ApplicationRecord
   validates :inbox_id, presence: true
+
+  # Comvor: whether a new inbox starts with every account user and a new account user joins every inbox
+  # (Inbox#add_account_users_as_members, AccountUser#join_account_inboxes). Dark unless the deployment sets
+  # COMVOR_AUTO_INBOX_MEMBERSHIP=true, so upstream behaviour (and upstream specs) are unchanged without it.
+  def self.auto_membership?
+    ActiveModel::Type::Boolean.new.cast(ENV.fetch('COMVOR_AUTO_INBOX_MEMBERSHIP', false))
+  end
+
+  # Comvor: the [inbox, user] pairs of an account where the user is not a member, for the one-off backfill of
+  # inboxes created before auto membership (lib/tasks/ops/comvor_backfill_inbox_members.rake).
+  def self.missing_account_pairs(account)
+    user_ids = account.account_users.pluck(:user_id)
+    account.inboxes.order(:id).flat_map do |inbox|
+      (user_ids - inbox.inbox_members.pluck(:user_id)).sort.map { |user_id| [inbox, user_id] }
+    end
+  end
   validates :user_id, presence: true
   validates :user_id, uniqueness: { scope: :inbox_id }
 

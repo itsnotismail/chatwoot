@@ -80,6 +80,7 @@ class Inbox < ApplicationRecord
   after_destroy :delete_round_robin_agents
 
   after_create_commit :dispatch_create_event
+  after_create_commit :add_account_users_as_members, if: -> { InboxMember.auto_membership? }
   after_update_commit :dispatch_update_event
 
   scope :order_by_name, -> { order('lower(name) ASC') }
@@ -90,6 +91,15 @@ class Inbox < ApplicationRecord
   def add_members(user_ids)
     inbox_members.create!(user_ids.map { |user_id| { user_id: user_id } })
     update_account_cache
+  end
+
+  # Comvor: a new inbox starts with every user of the account as a member, the owner included, because
+  # Chatwoot shows an agent only the conversations of inboxes they belong to and alerts only inbox members
+  # about a new chat or a bot hand-off. The create wizard's Add Agents step then replaces the list with the
+  # owner's pick, so an agent the owner leaves out stays out.
+  def add_account_users_as_members
+    user_ids = account.account_users.pluck(:user_id) - inbox_members.pluck(:user_id)
+    add_members(user_ids) if user_ids.any?
   end
 
   # Removes multiple members from the inbox

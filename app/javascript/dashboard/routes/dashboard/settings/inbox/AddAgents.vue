@@ -52,8 +52,17 @@ export default {
         }));
     },
   },
-  mounted() {
+  async mounted() {
     this.$store.dispatch('agents/get');
+    // Comvor: start from the inbox's current members. Where the deployment adds
+    // every account user to a new inbox, the owner removes someone rather than
+    // having to add everyone, and saving the step keeps that choice.
+    try {
+      const { data } = await InboxMembersAPI.show(this.$route.params.inbox_id);
+      this.selectedAgentIds = data.payload.map(({ id }) => id);
+    } catch {
+      this.selectedAgentIds = [];
+    }
   },
   methods: {
     handleAgentAdd({ value }) {

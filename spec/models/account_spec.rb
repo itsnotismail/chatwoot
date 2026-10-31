@@ -48,6 +48,36 @@ RSpec.describe Account do
       expect(account.usage_limits[:agents]).to eq(ChatwootApp.max_limit)
       expect(account.usage_limits[:inboxes]).to eq(ChatwootApp.max_limit)
     end
+
+    # The community implementation, even when enterprise prepends its own.
+    def community_usage_limits(account)
+      impl = account.method(:usage_limits)
+      impl = impl.super_method while impl.owner != Account
+      impl.call
+    end
+
+    it 'honours an agent seat cap set in limits without the enterprise module' do
+      account.update!(limits: { 'agents' => 2 })
+      expect(community_usage_limits(account)[:agents]).to eq(2)
+      expect(community_usage_limits(account)[:inboxes]).to eq(ChatwootApp.max_limit)
+    end
+
+    it 'falls back to the max limit when no agent cap is set' do
+      account.update!(limits: { 'inboxes' => 3 })
+      expect(community_usage_limits(account)[:agents]).to eq(ChatwootApp.max_limit)
+    end
+
+    it 'reads a string cap and ignores an empty one' do
+      account.update!(limits: { 'agents' => '4' })
+      expect(community_usage_limits(account)[:agents]).to eq(4)
+      account.update!(limits: { 'agents' => '' })
+      expect(community_usage_limits(account)[:agents]).to eq(ChatwootApp.max_limit)
+    end
+
+    it 'treats a zero cap as a cap of zero' do
+      account.update!(limits: { 'agents' => 0 })
+      expect(community_usage_limits(account)[:agents]).to eq(0)
+    end
   end
 
   describe 'inbound_email_domain' do
