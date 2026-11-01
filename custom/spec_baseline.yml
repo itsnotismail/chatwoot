@@ -1,0 +1,51 @@
+# Comvor: the spec failures each mode is allowed to have, read by bin/ce-check
+# (CE mode: enterprise/ and spec/enterprise/ removed) and bin/e-check
+# (E mode: the tree as it is, enterprise present).
+#
+# Each entry is one example, `example: file:line`, never a file or a glob,
+# with its reason:
+# - `superseded_by: file:line`: Comvor's spec/custom example for the same
+#   behaviour. The upstream example tests the enterprise code that Comvor's
+#   prepended route or module now answers instead (phase 2: ours wins while
+#   enterprise is present).
+# - `preexisting: true` and `base:`: a commit where it already fails, for a
+#   failure this work did not cause.
+#
+# A listed example that passes is reported as stale and fails the check, so
+# fix or remove the entry when its cause goes away.
+
+ce:
+  # Phone-home to the Chatwoot hub is disabled.
+  - example: spec/lib/chatwoot_hub_spec.rb:18
+    preexisting: true
+    base: 9460c4368c
+  - example: spec/lib/chatwoot_hub_spec.rb:26
+    preexisting: true
+    base: 9460c4368c
+
+e:
+  # saml_login is served by Comvor::SamlLoginsController (prepended route),
+  # which sends members to the comvor_saml strategy, not enterprise's saml.
+  - example: spec/enterprise/controllers/api/v1/auth_controller_spec.rb:98
+    superseded_by: spec/custom/requests/comvor_saml_login_spec.rb:39
+  - example: spec/enterprise/controllers/api/v1/auth_controller_spec.rb:104
+    superseded_by: spec/custom/requests/comvor_saml_login_spec.rb:46
+  - example: spec/enterprise/controllers/api/v1/auth_controller_spec.rb:129
+    superseded_by: spec/custom/requests/comvor_saml_login_spec.rb:53
+  # saml_settings is served by Comvor::SamlSettingsController (prepended
+  # routes). This PUT maps a group to custom role 5, which is no role of the
+  # account; Comvor refuses a custom role of another account (or none).
+  - example: spec/enterprise/controllers/api/v1/accounts/saml_settings_controller_spec.rb:205
+    superseded_by: spec/custom/requests/comvor_saml_settings_spec.rb:495
+  # A reset request for a saml email is answered by
+  # Custom::DeviseOverrides::PasswordsController exactly as for any other
+  # email (200), so it does not tell who signs in through the portal;
+  # upstream answers 403.
+  - example: spec/enterprise/controllers/enterprise/devise_overrides/passwords_controller_spec.rb:10
+    superseded_by: spec/custom/requests/comvor_saml_passwords_spec.rb:33
+  # Expects sp_entity_id http://localhost:3000/saml/sp/N, but .env's
+  # FRONTEND_URL reaches the test environment (fails at base too, on a
+  # clean test database).
+  - example: spec/enterprise/models/account_saml_settings_spec.rb:60
+    preexisting: true
+    base: 9960e1b220

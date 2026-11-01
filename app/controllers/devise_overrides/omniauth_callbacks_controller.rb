@@ -30,16 +30,14 @@ class DeviseOverrides::OmniauthCallbacksController < DeviseTokenAuth::OmniauthCa
     @resource.skip_confirmation! if confirmable_enabled?
     set_random_password_if_oauth_user if needs_password_reset
 
-    @deep_link = @resource.generate_mobile_sso_deep_link
+    # once the resource is found and verified
+    # we can just send them to the login page again with the SSO params
+    # that will log them in
+    encoded_email = ERB::Util.url_encode(@resource.email)
+    params = { email: encoded_email, sso_auth_token: @resource.generate_sso_auth_token }.to_query
 
-    # Hand off with a tap rather than `redirect_to`: browsers refuse to launch
-    # an external app from a navigation they did not attribute to a user
-    # gesture, so a bare redirect to a custom scheme is silently dropped and
-    # the user is left staring at a blank page. The button below supplies that
-    # gesture. The page carries a one-time sso_auth_token, so it must not be
-    # cached.
-    response.headers['Cache-Control'] = 'no-store'
-    render 'devise_overrides/omniauth_callbacks/mobile_handoff', layout: false
+    mobile_deep_link_base = GlobalConfigService.load('MOBILE_DEEP_LINK_BASE', 'chatwootapp')
+    redirect_to "#{mobile_deep_link_base}://auth/saml?#{params}", allow_other_host: true
   end
 
   def sign_up_user

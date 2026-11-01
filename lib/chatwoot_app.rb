@@ -35,7 +35,8 @@ module ChatwootApp
 
   def self.extensions
     if custom?
-      %w[enterprise custom]
+      # Comvor: only the folders present, so prepend_mod_with never looks up a missing namespace
+      %w[enterprise custom].select { |extension| root.join(extension).exist? }
     elsif enterprise?
       %w[enterprise]
     else

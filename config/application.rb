@@ -51,6 +51,16 @@ module Chatwoot
     enterprise_initializers = Rails.root.join('enterprise/config/initializers')
     Dir[enterprise_initializers.join('**/*.rb')].each { |f| require f } if enterprise_initializers.exist?
 
+    # Comvor: load the custom/ extension folder after enterprise, so its views
+    # win and its initializers run last (see custom/UPSTREAM_EDITS.md)
+    custom_root = Rails.root.join('custom')
+    if custom_root.exist?
+      config.eager_load_paths << custom_root.join('lib')
+      config.eager_load_paths += Dir[custom_root.join('app/**')]
+      config.paths['app/views'].unshift('custom/app/views')
+      Dir[custom_root.join('config/initializers/**/*.rb')].each { |f| require f }
+    end
+
     # Settings in config/environments/* take precedence over those specified here.
     # Application configuration can go into files in config/initializers
     # -- all .rb files in that directory are automatically loaded after loading

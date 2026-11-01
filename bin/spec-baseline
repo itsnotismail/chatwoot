@@ -1,0 +1,54 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Comvor: judges an rspec JSON result against custom/spec_baseline.yml, for
+# bin/ce-check and bin/e-check.
+#
+#   bin/spec-baseline <ce|e> <results.json> <rspec exit status>
+#
+# Passes only when every failure is a baseline entry of that mode, no entry
+# that ran passed (stale), every entry is well-formed, and rspec did not
+# abort. Run from the tree whose specs were run.
+require 'json'
+require 'yaml'
+
+mode, results_path, rspec_status = ARGV
+abort 'usage: bin/spec-baseline <ce|e> <results.json> <rspec exit status>' unless %w[ce e].include?(mode) && results_path && rspec_status
+
+EXAMPLE = /\A[^\s:*?\[\]]+_spec\.rb:\d+\z/
+label = "#{mode}-check"
+entries = YAML.safe_load_file('custom/spec_baseline.yml').fetch(mode)
+
+invalid = entries.filter_map do |entry|
+  example = entry['example'].to_s
+  next "#{example.inspect}: not file:line" unless example.match?(EXAMPLE)
+
+  if entry['superseded_by']
+    file, line = entry['superseded_by'].to_s.split(':')
+    source = File.exist?(file.to_s) && File.readlines(file)[line.to_i - 1]
+    next "#{example}: superseded_by #{entry['superseded_by']} is not an example" unless source.to_s.match?(/\A\s*it\s/)
+  elsif entry['preexisting'] != true || !entry['base'].to_s.match?(/\A\h{7,40}\z/)
+    next "#{example}: needs superseded_by, or preexisting: true and base"
+  end
+end
+
+results = JSON.parse(File.read(results_path))
+id = ->(e) { "#{e['file_path'].delete_prefix('./')}:#{e['line_number']}" }
+failed = results['examples'].select { |e| e['status'] == 'failed' }.map(&id)
+passed = results['examples'].select { |e| e['status'] == 'passed' }.map(&id)
+baseline = entries.map { |entry| entry['example'] } # rubocop:disable Rails/Pluck -- plain Ruby, no ActiveSupport
+unexpected = failed - baseline
+stale = baseline & passed
+errors_outside = results['summary']['errors_outside_of_examples_count']
+# rspec can exit non-zero with no failed example to show for it (a hook or
+# at_exit abort); only a run whose failures are all baseline may pass.
+aborted = Integer(rspec_status).nonzero? && failed.empty?
+
+puts "#{label}: #{results['summary_line']}"
+(failed & baseline).each { |f| puts "  baseline failure: #{f}" }
+unexpected.each { |f| puts "  NEW FAILURE:      #{f}" }
+stale.each { |f| puts "  STALE BASELINE:   #{f} passed; remove it from custom/spec_baseline.yml" }
+invalid.each { |message| puts "  INVALID BASELINE: #{message}" }
+puts "#{label}: #{errors_outside} error(s) outside examples" if errors_outside.positive?
+puts "#{label}: rspec exited #{rspec_status} with no failed examples" if aborted
+exit(unexpected.empty? && stale.empty? && invalid.empty? && !aborted && errors_outside.zero? ? 0 : 1)
