@@ -16,6 +16,17 @@ module Comvor::SamlSso
   end
 
   def enabled_for?(account)
-    account.present? && available? && account.feature_enabled?('saml') && Comvor::SamlSetting.exists?(account_id: account.id)
+    account.present? && available? && configured_for?(account)
+  end
+
+  # The account's own half: its saml feature and a settings row, whatever
+  # the installation switches say.
+  def configured_for?(account)
+    account.feature_enabled?('saml') && Comvor::SamlSetting.of_account(account.id).exists?
+  end
+
+  # Ids of the accounts configured_for? holds for.
+  def configured_account_ids
+    Account.where(id: Comvor::SamlSetting.select(:account_id)).select { |account| account.feature_enabled?('saml') }.map(&:id)
   end
 end

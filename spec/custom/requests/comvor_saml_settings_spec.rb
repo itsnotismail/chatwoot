@@ -221,6 +221,15 @@ RSpec.describe 'Comvor SAML settings API', type: :request do
       expect(json_response).to eq(response_fields.index_with(nil).merge('account_id' => account.id, 'role_mappings' => {}))
     end
 
+    it 'answers the oldest row when the account has two, the one every reader takes' do
+      oldest = existing_row
+      Comvor::SamlSetting.new(provisioned.merge(account: account, role_mappings: { 'Later' => { 'role' => 1 } })).save!(validate: false)
+
+      call(:get)
+
+      expect(json_response['id']).to eq(oldest.id)
+    end
+
     it 'answers the stored row' do
       row = existing_row(role_mappings: { 'Admins' => { 'role' => 1 } })
 
@@ -239,10 +248,10 @@ RSpec.describe 'Comvor SAML settings API', type: :request do
     # Created before perform_enqueued_jobs, which would also run its avatar job.
     before { administrator }
 
-    it 'removes the row and answers 204' do
+    it 'removes the row and answers 204, resetting users once' do
       existing_row
 
-      call(:delete)
+      expect { call(:delete) }.to have_enqueued_job(Comvor::SamlProviderResetJob).with(account.id).exactly(:once)
 
       expect(response).to have_http_status(:no_content)
       expect(rows).to be_empty
@@ -266,6 +275,7 @@ RSpec.describe 'Comvor SAML settings API', type: :request do
 
     it 'keeps SSO for a user who is also a member of another account that still has SAML settings' do
       existing_row
+      other_account.enable_features!('saml')
       Comvor::SamlSetting.new(account: other_account).save!(validate: false)
       shared = create(:user, account: account, provider: 'saml')
       create(:account_user, account: other_account, user: shared)
@@ -273,6 +283,28 @@ RSpec.describe 'Comvor SAML settings API', type: :request do
       perform_enqueued_jobs { call(:delete) }
 
       expect(shared.reload.provider).to eq('saml')
+    end
+
+    it 'removes every row of the account, and resets users once none is left' do
+      existing_row
+      Comvor::SamlSetting.new(account: account).save!(validate: false)
+      converted = create(:user, account: account, provider: 'saml')
+
+      perform_enqueued_jobs { call(:delete) }
+
+      expect(response).to have_http_status(:no_content)
+      expect(rows).to be_empty
+      expect(converted.reload.provider).to eq('email')
+    end
+
+    it 'resets users even when there is no row, so the lever can be pulled again' do
+      converted = create(:user, account: account, provider: 'saml')
+
+      expect { call(:delete) }.to have_enqueued_job(Comvor::SamlProviderResetJob).with(account.id).exactly(:once)
+      perform_enqueued_jobs
+
+      expect(response).to have_http_status(:no_content)
+      expect(converted.reload.provider).to eq('email')
     end
 
     it 'leaves users of other accounts alone' do
@@ -435,6 +467,29 @@ RSpec.describe 'Comvor SAML settings API', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(rows.first.role_mappings).to eq({ 'Team' => { 'custom_role_id' => role_id } })
+    end
+
+    it 'stores a custom role given as a string as the number it names' do
+      role_id = custom_role_for(account)
+
+      call(:patch, settings: provisioned.merge(role_mappings: { 'Team' => { 'custom_role_id' => role_id.to_s } }))
+
+      expect(response).to have_http_status(:ok)
+      expect(rows.first.role_mappings).to eq({ 'Team' => { 'custom_role_id' => role_id } })
+    end
+
+    # Integer("010") is 8 and Integer("0x0b") is 11, while the column casts
+    # them to 10 and 0. Each spelling here parses as the account's own role
+    # yet would hand out another id: the id checked must be the id used.
+    { 'octal' => ->(id) { "0#{id.to_s(8)}" }, 'hexadecimal' => ->(id) { "0x#{id.to_s(16)}" } }.each do |label, spell|
+      it "refuses a custom role id spelled in #{label}" do
+        spelling = spell.call(custom_role_for(account))
+
+        call(:patch, settings: provisioned.merge(role_mappings: { 'Team' => { 'custom_role_id' => spelling } }))
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(rows).to be_empty
+      end
     end
 
     it 'refuses a custom role of another account' do

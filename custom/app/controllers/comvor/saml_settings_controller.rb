@@ -19,7 +19,7 @@ class Comvor::SamlSettingsController < Api::V1::Accounts::BaseController
 
   before_action { authorize(Comvor::SamlSetting) }
   before_action :ensure_saml_available, except: :destroy
-  before_action :fetch_setting
+  before_action :fetch_setting, except: :destroy
 
   def show
     render json: settings_json(@setting || Comvor::SamlSetting.new(account: Current.account))
@@ -35,8 +35,11 @@ class Comvor::SamlSettingsController < Api::V1::Accounts::BaseController
     save_setting(@setting || Comvor::SamlSetting.new(account: Current.account))
   end
 
+  # Every row of the account (the table allows more than one), and the
+  # users' reset even when there was none, so the lever can be pulled again.
   def destroy
-    @setting&.destroy!
+    destroyed = Comvor::SamlSetting.transaction { Comvor::SamlSetting.of_account(Current.account.id).destroy_all }
+    Comvor::SamlProviderResetJob.perform_later(Current.account.id) if destroyed.empty?
     head :no_content
   end
 
@@ -49,7 +52,7 @@ class Comvor::SamlSettingsController < Api::V1::Accounts::BaseController
   end
 
   def fetch_setting
-    @setting = Comvor::SamlSetting.where(account_id: Current.account.id).order(:id).first
+    @setting = Comvor::SamlSetting.for_account(Current.account.id)
   end
 
   def save_setting(setting)

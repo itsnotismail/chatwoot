@@ -5,6 +5,6 @@ module Custom::Concerns::Account
 
   included do
     # Not saml_settings: enterprise's concern defines that name.
-    has_one :comvor_saml_setting, class_name: 'Comvor::SamlSetting', dependent: :destroy_async
+    has_one :comvor_saml_setting, -> { order(:id) }, class_name: 'Comvor::SamlSetting', inverse_of: :account, dependent: :destroy_async
   end
 end

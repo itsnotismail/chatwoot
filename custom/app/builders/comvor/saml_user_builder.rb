@@ -66,7 +66,7 @@ class Comvor::SamlUserBuilder
   end
 
   def mapped_role
-    mappings = Comvor::SamlSetting.find_by(account_id: @account.id)&.role_mappings.presence || {}
+    mappings = Comvor::SamlSetting.for_account(@account.id)&.role_mappings.presence || {}
     group = @groups.find { |name| mappings.key?(name) }
     return { role: :agent } if group.nil?
 

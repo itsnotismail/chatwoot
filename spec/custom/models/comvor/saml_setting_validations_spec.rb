@@ -75,6 +75,25 @@ RSpec.describe Comvor::SamlSetting do
       expect(setting).not_to be_valid
     end
 
+    { 'octal' => ->(id) { "0#{id.to_s(8)}" }, 'hexadecimal' => ->(id) { "0x#{id.to_s(16)}" } }.each do |label, spell|
+      it "refuses a custom role id spelled in #{label} (it would read as another id)" do
+        spelling = spell.call(custom_role_for(account))
+        setting = described_class.new(settings.merge(role_mappings: { 'Team' => { 'custom_role_id' => spelling } }))
+        expect(setting).not_to be_valid
+      end
+    end
+
+    it 'stores a custom role id given as a decimal string as that Integer' do
+      role_id = custom_role_for(account)
+      setting = described_class.create!(settings.merge(role_mappings: { 'Team' => { 'custom_role_id' => role_id.to_s } }))
+      expect(setting.reload.role_mappings).to eq({ 'Team' => { 'custom_role_id' => role_id } })
+    end
+
+    it 'refuses a custom role id beyond the id column' do
+      setting = described_class.new(settings.merge(role_mappings: { 'Team' => { 'custom_role_id' => (2**64).to_s } }))
+      expect(setting).not_to be_valid
+    end
+
     it 'checks only when the mappings change, so a stored row stays writable' do
       setting = described_class.create!(settings)
       setting.update_columns(role_mappings: { 'Team' => { 'custom_role_id' => 0 } }) # rubocop:disable Rails/SkipsModelValidations
@@ -84,6 +103,16 @@ RSpec.describe Comvor::SamlSetting do
     it 'accepts mappings that name only a role' do
       setting = described_class.new(settings.merge(role_mappings: { 'Admins' => { 'role' => 1 }, 'Agents' => { 'role' => 'agent' } }))
       expect(setting).to be_valid
+    end
+  end
+
+  describe 'the row every reader takes' do
+    it 'is the oldest, for for_account and Account#comvor_saml_setting alike' do
+      oldest = described_class.create!(settings)
+      described_class.new(settings).save!(validate: false)
+
+      expect(described_class.for_account(account.id)).to eq(oldest)
+      expect(account.reload.comvor_saml_setting).to eq(oldest)
     end
   end
 
