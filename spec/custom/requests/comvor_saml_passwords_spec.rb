@@ -129,7 +129,6 @@ RSpec.describe 'Comvor: no Chatwoot password for a saml user', type: :request do
     end
   end
 
-  # The profile example is Comvor's, in spec/controllers/api/v1/profiles_controller_spec.rb.
   describe 'PUT /api/v1/profile' do
     let(:saml_user) { create(:user, provider: 'saml', password: old_password, account: account, role: :agent) }
 
@@ -146,6 +145,29 @@ RSpec.describe 'Comvor: no Chatwoot password for a saml user', type: :request do
       expect(response).to have_http_status(:forbidden)
       expect(response.parsed_body['error']).to eq(refusal)
       expect(saml_user.reload.valid_password?(new_password)).to be(false)
+    end
+
+    # Moved from spec/controllers/api/v1/profiles_controller_spec.rb, where
+    # Comvor had added it, assertions kept.
+    it 'declines password change for saml-provider users' do
+      saml_agent = create(:user, provider: 'saml', account: account, role: :agent)
+
+      put '/api/v1/profile',
+          params: { profile: { current_password: 'whatever', password: 'NewPassword1!', password_confirmation: 'NewPassword1!' } },
+          headers: saml_agent.create_new_auth_token,
+          as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      json_response = response.parsed_body
+      expect(json_response['error']).to eq(I18n.t('messages.reset_password_saml_user'))
+    end
+
+    # The text is Comvor's override in custom/config/locales/en.yml, which
+    # loads after upstream's config/locales/en.yml.
+    it 'points a saml user at the portal in the refusal' do
+      change_password(saml_user, current_password: old_password)
+
+      expect(response.parsed_body['error']).to eq('Your password is managed by Comvor. Reset it at app.comvor.com/forgot-password.')
     end
 
     it 'still lets a saml user change the rest of their profile' do

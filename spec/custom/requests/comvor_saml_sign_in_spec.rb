@@ -69,6 +69,16 @@ RSpec.describe 'Comvor portal SAML sign-in', type: :request do
       token = Rack::Utils.parse_query(URI.parse(CGI.unescapeHTML(deep_link)).query)['sso_auth_token']
       expect(member.valid_sso_auth_token?(token)).to be(true)
     end
+
+    it 'shows the hand-off page from custom/, with its own strings and the deep link as the button' do
+      sign_in_through_portal(relay_state: 'mobile')
+
+      page = Nokogiri::HTML(response.body)
+      expect(page.at('h1').text).to eq("You're signed in")
+      expect(page.at('a.cta').text).to eq('Open the app')
+      expect(page.at('a.cta')['href']).to start_with('chatwootapp://auth/saml?')
+      expect(response.body).not_to include('translation missing')
+    end
   end
 
   describe 'an unknown email' do

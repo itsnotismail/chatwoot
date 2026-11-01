@@ -1,6 +1,6 @@
 require 'rails_helper'
 
-RSpec.describe SsoAuthenticatable do
+RSpec.describe User do
   let(:user) { create(:user, email: 'agent@example.com') }
 
   describe '#generate_mobile_sso_deep_link' do

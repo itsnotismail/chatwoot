@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 # Signs in a user the comvor_saml strategy vouched for. Every other provider,
-# enterprise's saml included, goes on to super.
+# enterprise's saml included, goes on to super; only the mobile hand-off page
+# (sign_in_user_on_mobile) is Comvor's for all of them.
 #
 # The strategy's callback is the portal's cross-site POST, which arrives
 # without the session cookie. redirect_callbacks hands what sign-in needs,
@@ -52,6 +53,23 @@ module Custom::DeviseOverrides::OmniauthCallbacksController
   end
 
   private
+
+  # Replaces upstream's for every provider, enterprise's saml included: the
+  # same first three lines, then a page with a button instead of upstream's
+  # redirect. Browsers refuse to launch an external app from a navigation
+  # they did not attribute to a user gesture, so a bare redirect to a custom
+  # scheme is silently dropped and the user is left on a blank page; the tap
+  # supplies the gesture. The page carries a one-time sso_auth_token, so it
+  # must not be cached.
+  def sign_in_user_on_mobile
+    needs_password_reset = oauth_user_needs_password_reset?
+    @resource.skip_confirmation! if confirmable_enabled?
+    set_random_password_if_oauth_user if needs_password_reset
+
+    @deep_link = @resource.generate_mobile_sso_deep_link
+    response.headers['Cache-Control'] = 'no-store'
+    render 'comvor/mobile_handoff', layout: false
+  end
 
   def comvor_saml_sign_in(auth)
     {

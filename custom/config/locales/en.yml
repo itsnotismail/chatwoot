@@ -1,5 +1,13 @@
 en:
+  # Overrides an upstream key (config/locales/en.yml): this file loads after
+  # it (custom/config/initializers/comvor_locales.rb).
+  messages:
+    reset_password_saml_user: Your password is managed by Comvor. Reset it at app.comvor.com/forgot-password.
   comvor:
+    mobile_handoff:
+      title: "You're signed in"
+      body: 'Tap below to finish opening your workspace in the app.'
+      cta: 'Open the app'
     saml_password_pointer:
       subject: Reset your password in the Comvor portal
       greeting: "Hello %{email},"
