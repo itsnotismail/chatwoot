@@ -46,7 +46,7 @@ e:
   # email (200), so it does not tell who signs in through the portal;
   # upstream answers 403.
   - example: spec/enterprise/controllers/enterprise/devise_overrides/passwords_controller_spec.rb:10
-    superseded_by: spec/custom/requests/comvor_saml_passwords_spec.rb:31
+    superseded_by: spec/custom/requests/comvor_saml_passwords_spec.rb:33
   # Expects sp_entity_id http://localhost:3000/saml/sp/N, but .env's
   # FRONTEND_URL reaches the test environment (fails at base too, on a
   # clean test database).

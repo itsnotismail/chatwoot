@@ -10,9 +10,12 @@ module Comvor::SamlSso
     switched_on? && Comvor::PortalIdp.secure?
   end
 
-  # The installation's ENABLE_SAML_SSO_LOGIN kill switch alone.
+  # The installation's ENABLE_SAML_SSO_LOGIN kill switch alone. On only for
+  # the stored value true: GlobalConfigService turns any truthy word into
+  # true, so false, FALSE and 0 are what reach this as something else, and
+  # the switch fails closed on those.
   def switched_on?
-    GlobalConfigService.load('ENABLE_SAML_SSO_LOGIN', 'true').to_s != 'false'
+    GlobalConfigService.load('ENABLE_SAML_SSO_LOGIN', 'true').to_s == 'true'
   end
 
   def enabled_for?(account)

@@ -45,5 +45,34 @@ RSpec.describe Comvor::PortalIdp do
 
       expect(Rails.logger).not_to have_received(:warn)
     end
+
+    it 'warns in production when the portal web address is plain HTTP, whether or not the API address is set' do
+      allow(described_class).to receive(:production?).and_return(true)
+
+      with_modified_env(COMVOR_PORTAL_API_URL: 'https://api.comvor.test', COMVOR_PORTAL_URL: 'http://app.comvor.test') { described_class.warn_if_insecure }
+      with_modified_env(COMVOR_PORTAL_API_URL: nil, COMVOR_PORTAL_URL: 'http://app.comvor.test') { described_class.warn_if_insecure }
+
+      expect(Rails.logger).to have_received(:warn).with(/COMVOR_PORTAL_URL is not https/).twice
+      expect(Rails.logger).not_to have_received(:warn).with(/COMVOR_PORTAL_API_URL/)
+    end
+
+    it 'names both addresses when both are plain HTTP' do
+      allow(described_class).to receive(:production?).and_return(true)
+
+      with_modified_env(COMVOR_PORTAL_API_URL: 'http://api.comvor.test', COMVOR_PORTAL_URL: 'http://app.comvor.test') { described_class.warn_if_insecure }
+
+      expect(Rails.logger).to have_received(:warn).with(/COMVOR_PORTAL_API_URL is not https/)
+      expect(Rails.logger).to have_received(:warn).with(/COMVOR_PORTAL_URL is not https/)
+    end
+
+    it 'stays quiet for an https or unset web address, and outside production' do
+      allow(described_class).to receive(:production?).and_return(true)
+      with_modified_env(COMVOR_PORTAL_API_URL: nil, COMVOR_PORTAL_URL: 'https://app.comvor.test') { described_class.warn_if_insecure }
+      with_modified_env(COMVOR_PORTAL_API_URL: nil, COMVOR_PORTAL_URL: nil) { described_class.warn_if_insecure }
+      allow(described_class).to receive(:production?).and_return(false)
+      with_modified_env(COMVOR_PORTAL_API_URL: nil, COMVOR_PORTAL_URL: 'http://app.comvor.test') { described_class.warn_if_insecure }
+
+      expect(Rails.logger).not_to have_received(:warn)
+    end
   end
 end

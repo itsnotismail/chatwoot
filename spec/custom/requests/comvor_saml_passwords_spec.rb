@@ -2,11 +2,13 @@
 
 # A saml user can never set a Chatwoot password (behaviour D): the portal is
 # their only credential authority, and a local password would sign in around
-# the portal's second factor. Each path that sets one is refused; the Devise
-# reset examples are ported from
+# the portal's second factor. Each path that sets one is refused. The Devise
+# reset-completion examples are ported from
 # spec/enterprise/controllers/enterprise/devise_overrides/passwords_controller_spec.rb
-# (upstream's and Comvor's, every assertion kept), so they hold with
-# enterprise/ removed.
+# with every assertion kept, so they hold with enterprise/ removed. The
+# reset-request example supersedes upstream's 403: Comvor answers a saml
+# email like any other (200), so the response does not tell who signs in
+# through the portal (see custom/spec_baseline.yml).
 require 'rails_helper'
 
 RSpec.describe 'Comvor: no Chatwoot password for a saml user', type: :request do

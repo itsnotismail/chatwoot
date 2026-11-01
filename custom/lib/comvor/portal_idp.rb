@@ -114,12 +114,18 @@ module Comvor::PortalIdp
   end
 
   # In production a plain-HTTP portal address switches portal sign-in,
-  # password delegation and the sign-out hand-off off; run at boot so the
-  # log says so.
+  # password delegation and the sign-out hand-off off, and a plain-HTTP web
+  # address the password reset link and the sign-out return address; run at
+  # boot so the log says so.
   def warn_if_insecure
-    return unless production? && configured? && !secure?
+    return unless production?
 
-    Rails.logger.warn('Comvor: COMVOR_PORTAL_API_URL is not https; portal sign-in, password delegation and sign-out hand-off are off')
+    if configured? && !secure?
+      Rails.logger.warn('Comvor: COMVOR_PORTAL_API_URL is not https; portal sign-in, password delegation and sign-out hand-off are off')
+    end
+    return unless web_url.present? && Comvor::PortalOrigins.of(web_url).nil?
+
+    Rails.logger.warn('Comvor: COMVOR_PORTAL_URL is not https; the portal password reset link and sign-out return address are off')
   end
 
   # SHA-256 of a stored certificate as ruby-saml parses it at callback time.

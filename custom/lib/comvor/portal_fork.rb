@@ -5,6 +5,8 @@
 # a JSON POST that proves itself with the shared secret and forwards the end
 # user's IP, the route's only usable rate-limit key. comvor-api mounts the
 # routes only when PORTAL_FORK_SHARED_SECRET is set, so both halves must be.
+# The same secret authenticates comvor-api's calls the other way, into the
+# fork's internal endpoints (secret_matches?).
 #
 # Every failure (transport, non-200, a body that is not JSON) is nil, so the
 # callers fail closed. Nothing sent or received is ever logged.
@@ -40,6 +42,15 @@ module Comvor::PortalFork
 
   def secret
     ENV.fetch('PORTAL_FORK_SHARED_SECRET', '').to_s
+  end
+
+  # Whether a secret the portal presented is ours. Compared as SHA-256
+  # digests, so neither the content nor the length of the real secret shows
+  # in how long the comparison takes. Never true while no secret is set.
+  def secret_matches?(candidate)
+    return false if secret.blank? || !candidate.is_a?(String)
+
+    ActiveSupport::SecurityUtils.secure_compare(Digest::SHA256.hexdigest(candidate), Digest::SHA256.hexdigest(secret))
   end
 
   def warn_failure(path, reason)

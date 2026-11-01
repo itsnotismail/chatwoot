@@ -15,4 +15,12 @@ Rails.application.routes.prepend do
     put 'saml_settings', to: 'comvor/saml_settings#update', as: :comvor_put_saml_settings
     delete 'saml_settings', to: 'comvor/saml_settings#destroy', as: :comvor_destroy_saml_settings
   end
+
+  # The portal's calls into the fork. Deliberately outside `namespace :api`, so
+  # they never inherit authenticate_user!; the shared secret authenticates.
+  post 'internal/portal/agent_session', to: 'comvor/portal_agent_sessions#create', as: :comvor_portal_agent_session,
+                                        defaults: { format: 'json' }
+
+  # The portal's sign-out finishes here so the workspace session ends too.
+  get 'comvor/sign_out', to: 'comvor/workspace_sign_outs#show', as: :comvor_workspace_sign_out
 end
