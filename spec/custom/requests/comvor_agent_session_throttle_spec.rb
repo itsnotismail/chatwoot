@@ -153,4 +153,28 @@ RSpec.describe 'Comvor: limits on POST /internal/portal/agent_session', type: :r
       expect(response).not_to have_http_status(:too_many_requests)
     end
   end
+
+  # The request specs' client tidies a path before it reaches Rack, so the
+  # spellings the router accepts are checked on the raw request as well.
+  describe Comvor::AgentSessionThrottle do
+    def rack_request(path, method: 'POST')
+      Rack::Attack::Request.new(Rack::MockRequest.env_for('/', method: method).merge('PATH_INFO' => path))
+    end
+
+    it 'counts every spelling of the path that the routes answer' do
+      ['/internal/portal/agent_session', '/internal/portal/agent_session/', '/internal/portal/agent_session.json',
+       '/internal/portal/agent_session.json/', '/internal//portal/agent_session', '//internal/portal//agent_session',
+       '/internal/portal/agent_session//'].each do |path|
+        expect(described_class.agent_session?(rack_request(path))).to be(true), path
+      end
+    end
+
+    it 'counts nothing else' do
+      ['/internal/portal/agent_sessions', '/internal/portal/agent_session/x', '/internal/portal', '/x/internal/portal/agent_session',
+       '/internal/portal/agent_session.json/x', '/'].each do |path|
+        expect(described_class.agent_session?(rack_request(path))).to be(false), path
+      end
+      expect(described_class.agent_session?(rack_request('/internal/portal/agent_session', method: 'GET'))).to be(false)
+    end
+  end
 end

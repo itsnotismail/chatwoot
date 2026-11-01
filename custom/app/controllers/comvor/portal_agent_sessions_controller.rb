@@ -16,7 +16,7 @@
 # when the user cannot be created.
 class Comvor::PortalAgentSessionsController < ActionController::API
   SECRET_HEADER = 'X-Comvor-Portal-Secret'
-  ACCOUNT_ID = /\A[1-9]\d{0,17}\z/
+  ACCOUNT_ID = /\A[1-9]\d*\z/
 
   before_action :require_portal_secret
   before_action :fetch_email

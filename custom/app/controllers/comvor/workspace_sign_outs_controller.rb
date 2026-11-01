@@ -69,13 +69,11 @@ class Comvor::WorkspaceSignOutsController < ApplicationController
     target.match?(LOCAL_PATH) && !target.match?(ENCODED_SLASH)
   end
 
-  # The address when its origin is one of the portal's, exactly. The
-  # authority is checked for what hides a second host in it: userinfo (@),
-  # encoding (%), a backslash or whitespace.
+  # The address when its origin is one of the portal's, exactly. URI refuses
+  # backslashes, whitespace and control characters, and an address with
+  # userinfo has no origin, so a second host hidden in the authority
+  # (userinfo, encoding, backslash) matches nothing.
   def portal_address(target)
-    authority = target.sub(%r{\A[a-z][a-z0-9+.-]*://}i, '').split(%r{[/?#]}, 2).first.to_s
-    return nil if authority.match?(/[@%\\[:space:][:cntrl:]]/) || target.match?(/[\\[:space:][:cntrl:]]/)
-
     origin = Comvor::PortalOrigins.of(target)
     return nil unless origin && Comvor::PortalOrigins.allowed.include?(origin)
 
