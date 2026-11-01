@@ -5,14 +5,20 @@
 # page reads and writes them. Served instead of enterprise's controller
 # (prepended routes), with the answers and fields that one gives.
 #
-# The service provider name is always comvor-chatwoot-account-N, whatever
-# the client sends; the identity provider fields must name the Comvor
-# portal (Comvor::SamlIdpPin).
+# The service provider name is comvor-chatwoot-account-N: generated when
+# the client sends none, refused when it sends another. The identity
+# provider fields must name the Comvor portal (Comvor::SamlIdpPin).
+#
+# Reading and writing need the account's saml feature and the installation's
+# ENABLE_SAML_SSO_LOGIN switch; DELETE does not, because it is the rollback
+# lever and must work while SSO is switched off.
 class Comvor::SamlSettingsController < Api::V1::Accounts::BaseController
   RESPONSE_FIELDS = %i[id account_id sso_url certificate fingerprint idp_entity_id sp_entity_id role_mappings created_at updated_at].freeze
+  # The message the settings pin gives for the same refusal.
+  SP_ENTITY_ID_REFUSED = 'Sp entity must be the Comvor portal name for this account'
 
   before_action { authorize(Comvor::SamlSetting) }
-  before_action :ensure_saml_available
+  before_action :ensure_saml_available, except: :destroy
   before_action :fetch_setting
 
   def show
@@ -47,8 +53,11 @@ class Comvor::SamlSettingsController < Api::V1::Accounts::BaseController
   end
 
   def save_setting(setting)
-    setting.assign_attributes(setting_params)
-    setting.sp_entity_id = Comvor::PortalIdp.sp_entity_id_for(Current.account.id)
+    attributes = setting_params
+    attributes[:sp_entity_id] = expected_sp_entity_id if attributes[:sp_entity_id].blank?
+    return render_unprocessable([SP_ENTITY_ID_REFUSED]) unless attributes[:sp_entity_id] == expected_sp_entity_id
+
+    setting.assign_attributes(attributes)
 
     if setting.save
       render json: settings_json(setting)
@@ -58,7 +67,11 @@ class Comvor::SamlSettingsController < Api::V1::Accounts::BaseController
   end
 
   def setting_params
-    params.require(:saml_settings).permit(:sso_url, :certificate, :idp_entity_id, role_mappings: {}).to_h
+    params.require(:saml_settings).permit(:sso_url, :certificate, :idp_entity_id, :sp_entity_id, role_mappings: {}).to_h
+  end
+
+  def expected_sp_entity_id
+    Comvor::PortalIdp.sp_entity_id_for(Current.account.id)
   end
 
   def settings_json(setting)

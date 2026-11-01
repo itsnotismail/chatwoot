@@ -96,12 +96,40 @@ RSpec.describe 'Comvor SAML settings API', type: :request do
       expect(json_response['role_mappings']).to eq({ 'Admins' => { 'role' => 1 } })
     end
 
-    it 'stores comvor-chatwoot-account-N whatever service provider name the client sends' do
-      call(:patch, settings: provisioned.merge(sp_entity_id: 'https://evil.example.com/sp'))
+    it 'accepts the service provider name comvor-api sends, comvor-chatwoot-account-N' do
+      call(:patch)
 
       expect(response).to have_http_status(:ok)
       expect(rows.first.sp_entity_id).to eq(sp_entity_id)
       expect(json_response['sp_entity_id']).to eq(sp_entity_id)
+    end
+
+    it 'refuses another service provider name, and stores nothing' do
+      call(:patch, settings: provisioned.merge(sp_entity_id: 'https://evil.example.com/sp'))
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(json_response['errors']).to eq(['Sp entity must be the Comvor portal name for this account'])
+      expect(rows).to be_empty
+    end
+
+    it 'refuses another service provider name for an existing row, and keeps it' do
+      row = existing_row
+
+      call(:put, settings: { sp_entity_id: 'comvor-chatwoot-account-999999' })
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(row.reload.sp_entity_id).to eq(sp_entity_id)
+    end
+
+    # Without the portal address the pin is off (outside production), so
+    # this refusal is the controller's own.
+    it 'refuses another service provider name when the portal pin is off' do
+      with_modified_env(COMVOR_PORTAL_API_URL: nil) do
+        call(:patch, settings: provisioned.merge(sp_entity_id: 'https://evil.example.com/sp'))
+      end
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(rows).to be_empty
     end
 
     it 'stores comvor-chatwoot-account-N when the client sends no service provider name' do
@@ -293,27 +321,63 @@ RSpec.describe 'Comvor SAML settings API', type: :request do
         expect(response).to have_http_status(:unauthorized)
         expect_nothing_written(verb)
       end
+    end
 
-      it "refuses when the account's saml feature is off (#{verb.upcase})" do
-        prepare(verb)
+    def switch_off(switch)
+      if switch == :feature
         account.disable_features!('saml')
+      else
+        allow(GlobalConfigService).to receive(:load).and_call_original
+        allow(GlobalConfigService).to receive(:load).with('ENABLE_SAML_SSO_LOGIN', 'true').and_return('false')
+      end
+    end
+
+    %i[get post patch put].each do |verb|
+      it "refuses when the account's saml feature is off (#{verb.upcase})" do
+        switch_off(:feature)
 
         call(verb)
 
         expect(response).to have_http_status(:forbidden)
         expect(json_response['error']).to eq('SAML feature not enabled for this account')
-        expect_nothing_written(verb)
+        expect(rows).to be_empty
       end
 
       it "refuses when SAML sign-in is switched off for the installation (#{verb.upcase})" do
-        prepare(verb)
-        allow(GlobalConfigService).to receive(:load).and_call_original
-        allow(GlobalConfigService).to receive(:load).with('ENABLE_SAML_SSO_LOGIN', 'true').and_return('false')
+        switch_off(:kill_switch)
 
         call(verb)
 
         expect(response).to have_http_status(:forbidden)
-        expect_nothing_written(verb)
+        expect(json_response['error']).to eq('SAML sign-in is switched off for this installation')
+        expect(rows).to be_empty
+      end
+    end
+
+    # DELETE is the rollback lever: it works while SSO is switched off, for
+    # administrators only.
+    { feature: "the account's saml feature is off", kill_switch: 'SAML sign-in is switched off for the installation' }.each do |switch, label|
+      it "deletes and resets users while #{label}" do
+        existing_row
+        converted = create(:user, account: account, provider: 'saml')
+        administrator # created before perform_enqueued_jobs, which would also run its avatar job
+        switch_off(switch)
+
+        perform_enqueued_jobs { call(:delete) }
+
+        expect(response).to have_http_status(:no_content)
+        expect(rows).to be_empty
+        expect(converted.reload.provider).to eq('email')
+      end
+
+      it "still refuses an agent's DELETE while #{label}" do
+        existing_row
+        switch_off(switch)
+
+        call(:delete, headers: { api_access_token: agent.access_token.token })
+
+        expect(response).to have_http_status(:unauthorized)
+        expect(rows.count).to eq(1)
       end
     end
   end
