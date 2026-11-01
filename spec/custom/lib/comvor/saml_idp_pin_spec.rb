@@ -29,6 +29,9 @@ RSpec.describe Comvor::SamlIdpPin do
   end
 
   before do
+    # Every example builds the enterprise settings model (the certificates
+    # come from its factory), which does not exist once enterprise/ is removed.
+    skip 'AccountSamlSettings is an enterprise model, absent in CE mode' unless Object.const_defined?(:AccountSamlSettings)
     Rails.cache.delete("comvor:portal_idp:certificate_sha256:#{portal}")
     stub_request(:get, "#{portal}/portal/saml/metadata").to_return(status: 200, body: metadata)
   end

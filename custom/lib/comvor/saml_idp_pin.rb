@@ -2,7 +2,7 @@
 
 # Validates an account's SAML settings against the Comvor portal (see
 # Comvor::PortalIdp). Mixed into AccountSamlSettings by
-# config/initializers/comvor_saml_idp_pin.rb, so no enterprise file changes.
+# custom/config/initializers/comvor_saml_idp_pin.rb, so no enterprise file changes.
 module Comvor::SamlIdpPin
   extend ActiveSupport::Concern
 

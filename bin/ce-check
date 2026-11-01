@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Comvor: run specs in CE mode, i.e. against HEAD with enterprise/ and
+# spec/enterprise/ deleted, the way upstream's run_foss_spec.yml job does.
+#
+#   bin/ce-check                       # spec/custom
+#   bin/ce-check spec/custom spec/foo_spec.rb:12
+#
+# Works on a throwaway worktree of HEAD (commit first; uncommitted changes are
+# not seen). Uses this checkout's .env and node_modules and therefore the same
+# test database, so it refuses to start while another rspec is running.
+# Exits 0 only when every failure is in the CE baseline below.
+set -euo pipefail
+
+# Failures CE mode already has upstream of this work: phone-home is disabled
+# (chatwoot_hub), and reply eligibility until it is rebuilt in custom/.
+BASELINE=(
+  spec/lib/chatwoot_hub_spec.rb:18
+  spec/lib/chatwoot_hub_spec.rb:26
+  spec/controllers/api/v1/accounts/conversations/reply_eligibilities_controller_spec.rb:24
+)
+
+repo="$(git rev-parse --show-toplevel)"
+if [ $# -eq 0 ]; then set -- spec/custom; fi
+
+if pgrep -f '(^|/)rspec( |$)' >/dev/null; then
+  echo "ce-check: another rspec is running; it shares the test database. Try again when it finishes." >&2
+  exit 2
+fi
+
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/ce-check.XXXXXX")"
+tree="$scratch/tree"
+cleanup() {
+  git -C "$repo" worktree remove --force "$tree" >/dev/null 2>&1 || true
+  rm -rf "$scratch"
+}
+trap cleanup EXIT
+
+sha="$(git -C "$repo" rev-parse --short HEAD)"
+git -C "$repo" worktree add --quiet --detach "$tree" HEAD
+for shared in .env node_modules; do
+  if [ -e "$repo/$shared" ]; then ln -s "$repo/$shared" "$tree/$shared"; fi
+done
+
+cd "$tree"
+rm -rf enterprise spec/enterprise
+
+status=0
+bundle exec rspec --format progress --format json --out "$scratch/results.json" "$@" || status=$?
+
+echo
+echo "ce-check: CE mode at $sha (enterprise/ and spec/enterprise/ removed): $*"
+if [ ! -s "$scratch/results.json" ]; then
+  echo "ce-check: rspec produced no results (exit $status); see the output above."
+  exit 1
+fi
+ruby -rjson -e '
+  results = JSON.parse(File.read(ARGV.shift))
+  baseline = ARGV
+  failed = results["examples"].select { |e| e["status"] == "failed" }.map { |e| "#{e["file_path"].delete_prefix("./")}:#{e["line_number"]}" }
+  unexpected = failed - baseline
+  puts "ce-check: #{results["summary_line"]}"
+  (failed & baseline).each { |f| puts "  baseline failure: #{f}" }
+  unexpected.each { |f| puts "  NEW FAILURE:      #{f}" }
+  puts "ce-check: #{results["summary"]["errors_outside_of_examples_count"]} error(s) outside examples" if results["summary"]["errors_outside_of_examples_count"].positive?
+  exit(unexpected.empty? && results["summary"]["errors_outside_of_examples_count"].zero? ? 0 : 1)
+' "$scratch/results.json" "${BASELINE[@]}"
