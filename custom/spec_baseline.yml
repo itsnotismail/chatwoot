@@ -36,6 +36,11 @@ e:
     superseded_by: spec/custom/requests/comvor_saml_login_spec.rb:46
   - example: spec/enterprise/controllers/api/v1/auth_controller_spec.rb:129
     superseded_by: spec/custom/requests/comvor_saml_login_spec.rb:53
+  # saml_settings is served by Comvor::SamlSettingsController (prepended
+  # routes). This PUT maps a group to custom role 5, which is no role of the
+  # account; Comvor refuses a custom role of another account (or none).
+  - example: spec/enterprise/controllers/api/v1/accounts/saml_settings_controller_spec.rb:205
+    superseded_by: spec/custom/requests/comvor_saml_settings_spec.rb:376
   # Enterprise SAML settings examples that already fail before this work.
   - example: spec/enterprise/controllers/api/v1/accounts/saml_settings_controller_spec.rb:142
     preexisting: true

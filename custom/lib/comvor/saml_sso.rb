@@ -7,7 +7,12 @@ module Comvor::SamlSso
   module_function
 
   def available?
-    GlobalConfigService.load('ENABLE_SAML_SSO_LOGIN', 'true').to_s != 'false' && Comvor::PortalIdp.secure?
+    switched_on? && Comvor::PortalIdp.secure?
+  end
+
+  # The installation's ENABLE_SAML_SSO_LOGIN kill switch alone.
+  def switched_on?
+    GlobalConfigService.load('ENABLE_SAML_SSO_LOGIN', 'true').to_s != 'false'
   end
 
   def enabled_for?(account)

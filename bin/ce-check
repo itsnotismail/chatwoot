@@ -2,7 +2,7 @@
 # Comvor: run specs in CE mode, i.e. against HEAD with enterprise/ and
 # spec/enterprise/ deleted, the way upstream's run_foss_spec.yml job does.
 #
-#   bin/ce-check                       # spec/custom
+#   bin/ce-check                       # spec/custom + every file in the ce: baseline
 #   bin/ce-check spec/custom spec/foo_spec.rb:12
 #
 # Works on a throwaway worktree of HEAD (commit first; uncommitted changes are
@@ -14,7 +14,13 @@
 set -euo pipefail
 
 repo="$(git rev-parse --show-toplevel)"
-if [ $# -eq 0 ]; then set -- spec/custom; fi
+if [ $# -eq 0 ]; then
+  # Run the baseline's own files too (HEAD's baseline, the one judged), so
+  # an entry that starts passing is reported as stale.
+  baseline_files="$(git -C "$repo" show HEAD:custom/spec_baseline.yml | ruby -ryaml -e 'puts YAML.safe_load($stdin.read).fetch("ce").map { |e| e["example"].split(":").first }.uniq')"
+  # shellcheck disable=SC2086
+  set -- spec/custom $baseline_files
+fi
 
 if pgrep -f '(^|/)rspec( |$)' >/dev/null; then
   echo "ce-check: another rspec is running; it shares the test database. Try again when it finishes." >&2
