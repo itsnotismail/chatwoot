@@ -83,11 +83,14 @@ RSpec.describe 'Comvor: limits on POST /internal/portal/agent_session', type: :r
       expect(response).to have_http_status(:too_many_requests)
     end
 
-    it 'counts requests with a wrong or missing secret as well' do
-      per_key.times { mint(headers: {}) }
+    # A stranger who knows a staff member's email could otherwise keep that
+    # member's mint at 429 without ever holding the secret.
+    it 'does not count requests with a wrong or missing secret' do
+      (per_key + 5).times { mint(headers: {}) }
+      (per_key + 5).times { mint(headers: { 'X-Comvor-Portal-Secret' => 'wrong' }) }
       mint
 
-      expect(response).to have_http_status(:too_many_requests)
+      expect(response).not_to have_http_status(:too_many_requests)
     end
 
     it 'keeps a body that does not parse in one bucket of its own instead of failing or going free' do

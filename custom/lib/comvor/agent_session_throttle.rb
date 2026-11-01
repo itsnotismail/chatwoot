@@ -11,8 +11,9 @@
 #   is keyed on the identity and never the IP: every real request comes from
 #   the one comvor-api instance, so an IP key would lump all merchants into
 #   one bucket (and the trusted-IP safelist skips every throttle for
-#   loopback). It counts every request, so a caller without the secret can
-#   also use up a key.
+#   loopback). Only requests that present the right secret count, so a
+#   stranger who knows a staff member's email cannot hold their mint at 429;
+#   without the secret the endpoint refuses them anyway.
 # - GLOBAL_LIMIT for the whole endpoint, whatever the identity: with the
 #   secret, a caller could otherwise try any number of fresh (account, email)
 #   pairs to find which are valid, or mint links for every account in turn.
@@ -42,7 +43,7 @@ module Comvor::AgentSessionThrottle
   # cannot be keyed (a body that does not parse, no account, no email) shares
   # a single bucket instead of going unthrottled.
   def key(req)
-    return unless agent_session?(req)
+    return unless portal_request?(req)
 
     params = ActionDispatch::Request.new(req.env).params
     account_id = params['account_id'].presence
@@ -57,6 +58,12 @@ module Comvor::AgentSessionThrottle
 
   # A single bucket for every request that presents the portal secret.
   def global_key(req)
-    'all' if agent_session?(req) && Comvor::PortalFork.secret_matches?(req.get_header(SECRET_ENV_KEY))
+    'all' if portal_request?(req)
+  end
+
+  # A request to this endpoint that presents the portal secret: the only
+  # requests either limit counts.
+  def portal_request?(req)
+    agent_session?(req) && Comvor::PortalFork.secret_matches?(req.get_header(SECRET_ENV_KEY))
   end
 end

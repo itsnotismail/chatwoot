@@ -11,9 +11,10 @@ module Comvor::SamlSso
   end
 
   # The installation's ENABLE_SAML_SSO_LOGIN kill switch alone. On only for
-  # the stored value true: GlobalConfigService turns any truthy word into
-  # true, so false, FALSE and 0 are what reach this as something else, and
-  # the switch fails closed on those.
+  # the value true (or 'true'); it fails closed on everything else. That
+  # includes every word GlobalConfigService reads as false (false, FALSE, 0,
+  # f, F, off, OFF), which reach this as the stored string, and nil or a
+  # blank value.
   def switched_on?
     GlobalConfigService.load('ENABLE_SAML_SSO_LOGIN', 'true').to_s == 'true'
   end
