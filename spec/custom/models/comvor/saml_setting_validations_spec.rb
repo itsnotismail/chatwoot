@@ -83,6 +83,11 @@ RSpec.describe Comvor::SamlSetting do
       end
     end
 
+    it "refuses a leading zero, even where it reads as the account's own role" do
+      setting = described_class.new(settings.merge(role_mappings: { 'Team' => { 'custom_role_id' => "0#{custom_role_for(account)}" } }))
+      expect(setting).not_to be_valid
+    end
+
     it 'stores a custom role id given as a decimal string as that Integer' do
       role_id = custom_role_for(account)
       setting = described_class.create!(settings.merge(role_mappings: { 'Team' => { 'custom_role_id' => role_id.to_s } }))
