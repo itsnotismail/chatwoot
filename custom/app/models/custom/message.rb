@@ -36,6 +36,7 @@ module Custom::Message
   # from its revision check to its commit. Status is re-read under the lock,
   # so a second reply that waited for this one finds it open and does nothing.
   def take_over_bot_conversation
+    @bot_takeover = nil # a takeover rolled back with an earlier save of this message never reaches its commit
     return unless takes_over_bot_conversation?
 
     owner = Conversation.find(conversation_id)
@@ -60,7 +61,8 @@ module Custom::Message
 
   # The reply's message_created payload is built from its own conversation
   # instance, so it gets the state the takeover just wrote, without becoming
-  # a change of that instance.
+  # a change of that instance. A rollback leaves the copy in memory; that is
+  # harmless because the reply that would use it failed with the transaction.
   def mirror_takeover(owner)
     attributes = %w[status status_revision assignee_id assignee_agent_bot_id]
     attributes.each { |attribute| conversation[attribute] = owner[attribute] }

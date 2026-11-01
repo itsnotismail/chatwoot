@@ -22,7 +22,7 @@ class Comvor::SamlUserBuilder
 
   PROVIDER = 'saml'
   ROLES = %w[agent administrator].freeze
-  NEW_MEMBER_PUSH_FLAGS = %i[push_conversation_creation push_assigned_conversation_new_message].freeze
+  NEW_MEMBER_PUSH_FLAGS = Custom::AccountUser::INBOX_MEMBER_PUSH_FLAGS
 
   def initialize(email:, account_id:, name: nil, first_name: nil, groups: [])
     @email = email.to_s.strip.downcase

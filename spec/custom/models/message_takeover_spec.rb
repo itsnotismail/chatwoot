@@ -57,12 +57,9 @@ RSpec.describe Message do
       expect(events.map { |event| event.drop(1) }.uniq).to eq([['open', 1]])
     end
 
-    it 'shows an assignee set by in-transaction auto-assignment in the message_created payload' do
+    it "the takeover's assignee reaches message_created" do
       agent = create(:user, account: conversation.account)
       create(:inbox_member, inbox: conversation.inbox, user: agent)
-      allow(AutoAssignment::AgentAssignmentService).to receive(:new) do |conversation:, **|
-        instance_double(AutoAssignment::AgentAssignmentService, perform: conversation.update!(assignee: agent))
-      end
       payloads = []
       allow(Rails.configuration.dispatcher).to receive(:dispatch) do |event, _time, data|
         payloads << [event, data[:message].conversation.assignee_id] if event == Message::MESSAGE_CREATED
@@ -137,6 +134,36 @@ RSpec.describe Message do
         expect(conversation.reload.assignee_id).to eq(owner.id)
         expect(events.count(Conversation::CONVERSATION_OPENED)).to eq(1)
         expect(events.count(Conversation::CONVERSATION_STATUS_CHANGED)).to eq(1)
+      end
+
+      # The takeover's callbacks run as the system (Current.user cleared), so
+      # the community self-assign check cannot see that the replier assigned
+      # themselves.
+      it 'is not notified of the assignment their own reply made' do
+        notifiable = []
+        allow(Rails.configuration.dispatcher).to receive(:dispatch).and_wrap_original do |original, event, time, data|
+          notifiable << data[:notifiable_assignee_change] if event == Conversation::ASSIGNEE_CHANGED
+          original.call(event, time, data)
+        end
+
+        perform_enqueued_jobs(only: EventDispatcherJob) do
+          create(:message, conversation: conversation, message_type: :outgoing, sender: agent)
+        end
+
+        expect(conversation.reload.assignee_id).to eq(agent.id)
+        expect(notifiable).to eq([false])
+        expect(agent.notifications.where(notification_type: 'conversation_assignment')).to be_empty
+      end
+
+      it 'is still notified when someone else assigns them' do
+        conversation.update!(status: :open)
+        Current.user = create(:user, account: conversation.account, role: :administrator)
+
+        perform_enqueued_jobs(only: EventDispatcherJob) { conversation.update!(assignee: agent) }
+
+        expect(agent.notifications.where(notification_type: 'conversation_assignment').count).to eq(1)
+      ensure
+        Current.user = nil
       end
 
       it 'is not assigned when the inbox is not theirs to work in' do

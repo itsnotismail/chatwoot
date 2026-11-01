@@ -23,8 +23,20 @@
 module Custom::Conversation
   def take_over_for(agent)
     @takeover_commit_callbacks_deferred = true
-    self.assignee = agent if assignee_id.blank? && agent.is_a?(User) && inbox.assignable_agents.include?(agent)
+    if assignee_id.blank? && agent.is_a?(User) && inbox.assignable_agents.include?(agent)
+      self.assignee = agent
+      @takeover_assigned_replier_id = agent.id
+    end
     update!(status: :open)
+  end
+
+  # The replier assigned themselves by replying, as a self-assign in the UI
+  # does, which never notifies. The community check (self_assign?) compares
+  # with Current.user, which the takeover's callbacks run without.
+  def notifiable_assignee_change?
+    return false if @takeover_commit_callbacks_deferred && assignee_id.present? && assignee_id == @takeover_assigned_replier_id
+
+    super
   end
 
   # As the system: no agent status activity, no performer on the events.
