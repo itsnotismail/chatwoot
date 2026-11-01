@@ -171,6 +171,11 @@ RSpec.describe Comvor::SamlUserBuilder do
 
           expect(existing_user.reload.confirmed?).to be true
         end
+
+        it 'replaces the password whoever signed up with that email chose' do
+          expect { builder.perform }.to(change { existing_user.reload.encrypted_password })
+          expect(existing_user.valid_password?('Password1!')).to be(false)
+        end
       end
 
       context 'when user is already confirmed' do
@@ -183,6 +188,10 @@ RSpec.describe Comvor::SamlUserBuilder do
 
           expect(existing_user.reload.confirmed?).to be true
           expect(existing_user.reload.confirmed_at).to be_within(2.seconds).of(original_confirmed_at)
+        end
+
+        it 'keeps their password' do
+          expect { builder.perform }.not_to(change { existing_user.reload.encrypted_password })
         end
       end
     end
@@ -203,6 +212,24 @@ RSpec.describe Comvor::SamlUserBuilder do
         it 'applies custom role based on SAML groups' do
           user = builder.perform
           expect(AccountUser.find_by(user: user, account: account).custom_role_id).to eq(42)
+        end
+      end
+
+      context 'when a group maps to the role by its enum value' do
+        before { Comvor::SamlSetting.where(account: account).update_all(role_mappings: { 'Administrators' => { 'role' => 1 } }) } # rubocop:disable Rails/SkipsModelValidations
+
+        it 'applies that role' do
+          user = builder.perform
+          expect(AccountUser.find_by(user: user, account: account).role).to eq('administrator')
+        end
+      end
+
+      context 'when a group maps to a role that does not exist' do
+        before { Comvor::SamlSetting.where(account: account).update_all(role_mappings: { 'Administrators' => { 'role' => 'owner' } }) } # rubocop:disable Rails/SkipsModelValidations
+
+        it 'makes an agent rather than failing' do
+          user = builder.perform
+          expect(AccountUser.find_by(user: user, account: account).role).to eq('agent')
         end
       end
 

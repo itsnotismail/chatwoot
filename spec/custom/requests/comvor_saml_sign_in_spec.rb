@@ -111,6 +111,15 @@ RSpec.describe 'Comvor portal SAML sign-in', type: :request do
       expect(user.accounts).to eq([account])
     end
 
+    it 'is the one whose SSO is checked again at sign-in, whatever the follow-up request names' do
+      portal_post(email: 'new.agent@example.com')
+      account.disable_features!('saml')
+      get "/auth/comvor_saml/callback?account_id=#{other_account.id}"
+
+      expect(response.location).to eq(refused_on_web)
+      expect(User.from_email('new.agent@example.com')).to be_nil
+    end
+
     it 'is the one membership is checked against, whatever the follow-up request names' do
       outsider = create(:user, email: 'agent@example.com', account: other_account)
 
@@ -150,6 +159,89 @@ RSpec.describe 'Comvor portal SAML sign-in', type: :request do
 
       expect_refused_at_callback
     end
+  end
+
+  describe 'the hand-off across the 303 hop' do
+    let!(:member) { create(:user, email: 'agent@example.com', account: account) }
+    let(:handoff_key) { "#{Comvor::SamlSignInHandoff::KEY_PREFIX}fixed-nonce" }
+
+    before do
+      allow(SecureRandom).to receive(:urlsafe_base64).and_call_original
+      allow(SecureRandom).to receive(:urlsafe_base64).with(32).and_return('fixed-nonce')
+    end
+
+    it 'signs in once: replaying the session cookie set on the hop is refused' do
+      portal_post
+      hop_cookie = cookies['_chatwoot_session']
+      follow_redirect!
+      expect(signed_in_as?(member)).to be(true)
+
+      cookies['_chatwoot_session'] = hop_cookie
+      get '/auth/comvor_saml/callback'
+
+      expect(response.location).to eq(refused_on_web)
+    end
+
+    it 'keeps only a nonce in the session' do
+      portal_post
+
+      expect(session['comvor_saml.sign_in']).to eq('fixed-nonce')
+    end
+
+    it 'lasts two minutes, and is refused once it has expired' do
+      allow(Redis::Alfred).to receive(:set).and_call_original
+
+      portal_post
+      expect(Redis::Alfred).to have_received(:set).with(handoff_key, anything, ex: 120)
+      Redis::Alfred.delete(handoff_key)
+      follow_redirect!
+
+      expect(response.location).to eq(refused_on_web)
+    end
+
+    it 'is refused when SSO is switched off for the account between the hop and the sign-in' do
+      portal_post(email: 'new.agent@example.com')
+      account.disable_features!('saml')
+      follow_redirect!
+
+      expect(response.location).to eq(refused_on_web)
+      expect(User.from_email('new.agent@example.com')).to be_nil
+    end
+
+    it 'is refused when SAML sign-in is switched off for the installation between the hop and the sign-in' do
+      portal_post
+      allow(GlobalConfigService).to receive(:load).and_call_original
+      allow(GlobalConfigService).to receive(:load).with('ENABLE_SAML_SSO_LOGIN', 'true').and_return('false')
+      follow_redirect!
+
+      expect(response.location).to eq(refused_on_web)
+    end
+
+    it 'is refused when Redis cannot keep it' do
+      allow(Redis::Alfred).to receive(:set).and_call_original
+      allow(Redis::Alfred).to receive(:set).with(handoff_key, anything, ex: 120).and_raise(Redis::CannotConnectError)
+
+      portal_post
+
+      expect(response.location).to eq(refused_on_web)
+      expect(session['comvor_saml.sign_in']).to be_nil
+    end
+
+    it 'is refused when Redis cannot be read at sign-in' do
+      portal_post
+      allow($alfred).to receive(:with).and_raise(Redis::CannotConnectError) # rubocop:disable Style/GlobalVars
+      follow_redirect!
+
+      expect(response.location).to eq(refused_on_web)
+    end
+  end
+
+  it 'refuses, rather than failing, when the user cannot be saved' do
+    allow(User).to receive(:create!).and_raise(ActiveRecord::RecordInvalid)
+
+    sign_in_through_portal(email: 'new.agent@example.com')
+
+    expect(response.location).to eq(refused_on_web)
   end
 
   describe 'the request phase' do

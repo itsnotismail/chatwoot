@@ -4,7 +4,9 @@
 # asserted email:
 # - an existing user must already be a member of that account, or sign-in is
 #   refused (the portal vouches for an email, not for a membership);
-# - an existing member becomes a SAML user, confirmed;
+# - an existing member becomes a SAML user, confirmed; one who was not
+#   confirmed also gets a random password, as the community OAuth callback
+#   does, so whoever signed up with that email cannot keep using theirs;
 # - an unknown email becomes a new confirmed SAML user and a member of the
 #   account, as an agent unless the settings' role_mappings say otherwise.
 #   Staff first reach the workspace this way, so a new member also joins
@@ -19,6 +21,7 @@ class Comvor::SamlUserBuilder
   end
 
   PROVIDER = 'saml'
+  ROLES = %w[agent administrator].freeze
   NEW_MEMBER_PUSH_FLAGS = %i[push_conversation_creation push_assigned_conversation_new_message].freeze
 
   def initialize(email:, account_id:, name: nil, first_name: nil, groups: [])
@@ -42,7 +45,10 @@ class Comvor::SamlUserBuilder
     raise AuthenticationFailed unless user.account_users.exists?(account_id: @account.id)
 
     user.provider = PROVIDER
-    user.skip_confirmation! unless user.confirmed?
+    unless user.confirmed?
+      user.skip_confirmation!
+      user.password = random_password
+    end
     user.save! if user.changed?
     user
   end
@@ -50,7 +56,7 @@ class Comvor::SamlUserBuilder
   def create_member
     user = ActiveRecord::Base.transaction do
       User.create!(email: @email, name: @name.presence || @email.split('@').first, display_name: @first_name.presence,
-                   provider: PROVIDER, password: "#{SecureRandom.hex(16)}aA1!", confirmed_at: Time.current).tap do |created|
+                   provider: PROVIDER, password: random_password, confirmed_at: Time.current).tap do |created|
         AccountUser.create!(account: @account, user: created, **mapped_role)
       end
     end
@@ -64,7 +70,20 @@ class Comvor::SamlUserBuilder
     group = @groups.find { |name| mappings.key?(name) }
     return { role: :agent } if group.nil?
 
-    mappings[group].to_h.slice('role', 'custom_role_id').symbolize_keys.reverse_merge(role: :agent)
+    mapping = mappings[group].to_h
+    { role: mapped_role_name(mapping['role']), custom_role_id: mapping['custom_role_id'] }.compact
+  end
+
+  # A role name or its enum value; anything else is an agent.
+  def mapped_role_name(value)
+    name = value.is_a?(Integer) || value.to_s.match?(/\A\d+\z/) ? AccountUser.roles.key(value.to_i) : value.to_s
+    ROLES.include?(name) ? name : 'agent'
+  end
+
+  # Meets the password rules (upper, lower, digit, symbol), as the community
+  # OAuth callback's random password does.
+  def random_password
+    "#{SecureRandom.hex(16)}aA1!"
   end
 
   def join_every_inbox(user)
