@@ -11,6 +11,7 @@
 module Comvor::PortalIdp
   SSO_PATH = '/portal/saml/sso'
   METADATA_PATH = '/portal/saml/metadata'
+  FORGOT_PASSWORD_PATH = '/forgot-password'
   CACHE_TTL = 1.hour
   OPEN_TIMEOUT = 3
   READ_TIMEOUT = 5
@@ -86,12 +87,39 @@ module Comvor::PortalIdp
     fetch_certificates.tap { |pems| Rails.cache.write(certificates_cache_key, pems, expires_in: CACHE_TTL) }
   end
 
+  # The portal's own web address (COMVOR_PORTAL_URL; comvor-api calls it
+  # PORTAL_BASE_URL), where agents sign in and reset their password. Not the
+  # API address above.
+  def web_url
+    ENV.fetch('COMVOR_PORTAL_URL', '').to_s.strip.chomp('/')
+  end
+
+  # The portal's forgot-password page, or nil when the portal is not
+  # configured (or, in production, not on HTTPS).
+  def password_reset_url
+    return nil unless secure? && web_url.present?
+    return nil if production? && URI.parse(web_url).scheme != 'https'
+
+    "#{web_url}#{FORGOT_PASSWORD_PATH}"
+  rescue URI::InvalidURIError
+    nil
+  end
+
   # Whether sign-in may trust the portal at all: it is configured and, in
   # production, reached over HTTPS.
   def secure?
     configured? && (!production? || URI.parse(base_url).scheme == 'https')
   rescue URI::InvalidURIError
     false
+  end
+
+  # In production a plain-HTTP portal address switches portal sign-in,
+  # password delegation and the sign-out hand-off off; run at boot so the
+  # log says so.
+  def warn_if_insecure
+    return unless production? && configured? && !secure?
+
+    Rails.logger.warn('Comvor: COMVOR_PORTAL_API_URL is not https; portal sign-in, password delegation and sign-out hand-off are off')
   end
 
   # SHA-256 of a stored certificate as ruby-saml parses it at callback time.

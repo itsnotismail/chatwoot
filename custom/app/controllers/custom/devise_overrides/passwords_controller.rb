@@ -1,13 +1,20 @@
 # frozen_string_literal: true
 
-# Refuses both halves of the Devise password reset for a saml user: the
-# request (no reset email is sent) and the completion (a reset token minted
-# earlier cannot set a password either).
+# Refuses both halves of the Devise password reset for a saml user.
+#
+# The request answers exactly as for any other email, so it does not tell
+# who signs in through the portal. No Chatwoot reset token is made; the
+# user gets a pointer to the portal's own reset page instead (none when the
+# portal is not configured). The completion refuses a reset token minted
+# earlier, so it cannot set a password either.
 module Custom::DeviseOverrides::PasswordsController
   def create
-    return comvor_refuse_saml_reset if Comvor::SamlPasswordGuard.saml?(User.from_email(params[:email].to_s.strip))
+    user = User.from_email(params[:email].to_s.strip)
+    return super unless Comvor::SamlPasswordGuard.saml?(user)
 
-    super
+    reset_url = Comvor::PortalIdp.password_reset_url
+    Comvor::SamlPasswordPointerMailer.pointer(user, reset_url).deliver_later if reset_url
+    build_response(I18n.t('messages.reset_password'), 200)
   end
 
   def update

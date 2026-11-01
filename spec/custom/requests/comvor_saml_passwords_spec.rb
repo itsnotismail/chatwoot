@@ -16,26 +16,59 @@ RSpec.describe 'Comvor: no Chatwoot password for a saml user', type: :request do
   let(:refusal) { I18n.t('messages.reset_password_saml_user') }
 
   describe 'POST /auth/password (reset request)' do
+    # The answer must not tell who signs in through the portal, so it is the
+    # one any other email gets. The saml user is pointed at the portal's own
+    # reset page instead of being sent a Chatwoot reset token.
     context 'with SAML user email' do
       let!(:saml_user) { create(:user, email: 'saml@example.com', provider: 'saml', account: account) }
+      let(:portal_env) { { COMVOR_PORTAL_API_URL: 'https://api.comvor.test', COMVOR_PORTAL_URL: 'https://app.comvor.test/' } }
 
-      it 'prevents password reset and returns forbidden with custom error message' do
-        params = { email: saml_user.email, redirect_url: 'http://test.host' }
-
-        post user_password_path, params: params, as: :json
-
-        expect(response).to have_http_status(:forbidden)
-        json_response = response.parsed_body
-        expect(json_response['success']).to be(false)
-        expect(json_response['errors']).to include(refusal)
+      def request_reset(email, env: portal_env)
+        with_modified_env(env) { post user_password_path, params: { email: email, redirect_url: 'http://test.host' }, as: :json }
+        { status: response.status, body: response.parsed_body }
       end
 
-      it 'sends no reset email and stores no reset token' do
-        expect do
-          post user_password_path, params: { email: saml_user.email, redirect_url: 'http://test.host' }, as: :json
-        end.not_to have_enqueued_mail
+      it 'answers exactly as for an email nobody has heard of' do
+        expect(request_reset(saml_user.email)).to eq(request_reset('nobody@example.test'))
+        expect(response).to have_http_status(:ok)
+      end
+
+      it 'sends no Chatwoot reset email and stores no reset token' do
+        expect { request_reset(saml_user.email) }.not_to have_enqueued_mail(Devise.mailer, :reset_password_instructions)
 
         expect(saml_user.reload.reset_password_token).to be_nil
+      end
+
+      it 'points the saml user at the portal reset page, with no Chatwoot reset token' do
+        expect { request_reset(saml_user.email) }
+          .to have_enqueued_mail(Comvor::SamlPasswordPointerMailer, :pointer).with(saml_user, 'https://app.comvor.test/forgot-password')
+
+        mail = Comvor::SamlPasswordPointerMailer.pointer(saml_user.reload, 'https://app.comvor.test/forgot-password')
+        expect(mail.to).to eq([saml_user.email])
+        expect(mail.subject).to eq(I18n.t('comvor.saml_password_pointer.subject'))
+        expect(mail.body.encoded).to include('href="https://app.comvor.test/forgot-password"')
+        expect(mail.body.encoded).not_to include('reset_password_token')
+        expect(saml_user.reset_password_token).to be_nil
+      end
+
+      it 'sends nothing when the portal is not configured' do
+        expect { request_reset(saml_user.email, env: { COMVOR_PORTAL_API_URL: nil, COMVOR_PORTAL_URL: nil }) }.not_to have_enqueued_mail
+
+        expect(response).to have_http_status(:ok)
+      end
+
+      it 'sends nothing when only the portal API address is configured' do
+        expect { request_reset(saml_user.email, env: { COMVOR_PORTAL_API_URL: 'https://api.comvor.test', COMVOR_PORTAL_URL: nil }) }
+          .not_to have_enqueued_mail
+      end
+
+      it 'takes the link from the environment, never from an account\'s SAML settings' do
+        Comvor::SamlSetting.new(account_id: account.id, sso_url: 'https://idp.attacker.test/portal/saml/sso',
+                                idp_entity_id: 'https://idp.attacker.test/portal/saml/metadata', certificate: 'x',
+                                sp_entity_id: "comvor-chatwoot-account-#{account.id}").save!(validate: false)
+
+        expect { request_reset(saml_user.email) }
+          .to have_enqueued_mail(Comvor::SamlPasswordPointerMailer, :pointer).with(saml_user, 'https://app.comvor.test/forgot-password')
       end
     end
 

@@ -1,0 +1,8 @@
+en:
+  comvor:
+    saml_password_pointer:
+      subject: Reset your password in the Comvor portal
+      greeting: "Hello %{email},"
+      managed: Someone asked to reset your password. Your sign-in is managed by the Comvor portal, so your password is reset there.
+      action: Reset my password in the Comvor portal
+      ignore: If you didn't ask for this, you can ignore this email.

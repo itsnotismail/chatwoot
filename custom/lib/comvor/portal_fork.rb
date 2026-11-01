@@ -33,7 +33,8 @@ module Comvor::PortalFork
     parsed.is_a?(Hash) ? parsed : warn_failure(path, 'a body that is not an object')
   rescue JSON::ParserError
     warn_failure(path, 'a body that is not JSON')
-  rescue SocketError, SystemCallError, Timeout::Error, IOError, Net::ProtocolError, URI::InvalidURIError, OpenSSL::SSL::SSLError => e
+  rescue SocketError, SystemCallError, Timeout::Error, IOError, Net::ProtocolError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError,
+         URI::InvalidURIError, OpenSSL::SSL::SSLError, Zlib::Error => e
     warn_failure(path, e.class.name)
   end
 

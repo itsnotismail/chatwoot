@@ -92,6 +92,14 @@ RSpec.describe Comvor::PortalPasswordVerifier do
       with_modified_env(portal_env) { expect(perform).to eq(:rejected) }
     end
 
+    it 'fails closed on a response Net::HTTP cannot parse' do
+      [Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError, Zlib::DataError].each do |error|
+        stub_request(:post, verify_url).to_raise(error)
+
+        with_modified_env(portal_env) { expect(perform).to eq(:rejected) }
+      end
+    end
+
     it 'fails closed on a timeout' do
       stub_request(:post, verify_url).to_timeout
 

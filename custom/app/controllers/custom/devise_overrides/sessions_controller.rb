@@ -38,6 +38,8 @@ module Custom::DeviseOverrides::SessionsController
     super
   end
 
+  protected
+
   def render_destroy_success
     return super if @comvor_saml_logout_url.blank?
 
@@ -60,11 +62,7 @@ module Custom::DeviseOverrides::SessionsController
     return nil if email.blank?
 
     user = User.from_email(email)
-    user if comvor_saml?(user)
-  end
-
-  def comvor_saml?(user)
-    user&.provider == 'saml'
+    user if Comvor::SamlPasswordGuard.saml?(user)
   end
 
   def comvor_sign_in_with_portal_password(user)
@@ -86,7 +84,7 @@ module Custom::DeviseOverrides::SessionsController
   end
 
   def comvor_answer_portal_challenge(user)
-    unless Comvor::PortalPasswordVerifier.enabled? && comvor_saml?(user) && user.active_for_authentication?
+    unless Comvor::PortalPasswordVerifier.enabled? && Comvor::SamlPasswordGuard.saml?(user) && user.active_for_authentication?
       return render_mfa_error('errors.mfa.invalid_token', :unauthorized)
     end
 
@@ -113,7 +111,7 @@ module Custom::DeviseOverrides::SessionsController
   end
 
   def comvor_saml_logout_url(user)
-    return nil unless comvor_saml?(user) && Comvor::PortalIdp.secure?
+    return nil unless Comvor::SamlPasswordGuard.saml?(user) && Comvor::PortalIdp.secure?
 
     "#{Comvor::PortalIdp.base_url}#{COMVOR_PORTAL_LOGOUT_PATH}"
   end
