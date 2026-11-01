@@ -55,6 +55,7 @@ if [ ! -s "$scratch/results.json" ]; then
 fi
 ruby -rjson -e '
   results = JSON.parse(File.read(ARGV.shift))
+  rspec_status = Integer(ARGV.shift)
   baseline = ARGV
   failed = results["examples"].select { |e| e["status"] == "failed" }.map { |e| "#{e["file_path"].delete_prefix("./")}:#{e["line_number"]}" }
   unexpected = failed - baseline
@@ -62,5 +63,9 @@ ruby -rjson -e '
   (failed & baseline).each { |f| puts "  baseline failure: #{f}" }
   unexpected.each { |f| puts "  NEW FAILURE:      #{f}" }
   puts "ce-check: #{results["summary"]["errors_outside_of_examples_count"]} error(s) outside examples" if results["summary"]["errors_outside_of_examples_count"].positive?
-  exit(unexpected.empty? && results["summary"]["errors_outside_of_examples_count"].zero? ? 0 : 1)
-' "$scratch/results.json" "${BASELINE[@]}"
+  # rspec can exit non-zero with no failed example to show for it (a hook or
+  # at_exit abort); only a run whose failures are all baseline may pass.
+  aborted = rspec_status.nonzero? && failed.empty?
+  puts "ce-check: rspec exited #{rspec_status} with no failed examples" if aborted
+  exit(unexpected.empty? && !aborted && results["summary"]["errors_outside_of_examples_count"].zero? ? 0 : 1)
+' "$scratch/results.json" "$status" "${BASELINE[@]}"
