@@ -114,6 +114,8 @@ RSpec.describe OmniAuth::Strategies::ComvorSaml do
       stub_request(:get, metadata_url).to_return(status: 200, body: ComvorSamlHelpers.metadata_xml(cert, new_cert))
 
       expect_accepted(callback(ComvorSamlHelpers.saml_response(key: new_key, cert: new_cert, account_id: account.id)))
+      # Accepted on the first read, not rescued by the re-read after a failure.
+      expect(a_request(:get, metadata_url)).to have_been_made.once
     end
 
     it 'refuses when the portal metadata cannot be read' do
