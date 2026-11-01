@@ -1,3 +1,10 @@
+# frozen_string_literal: true
+
+# Ported from spec/enterprise/controllers/enterprise/devise_overrides/sessions_controller_spec.rb
+# (Comvor's portal password delegation and portal second factor, every
+# example and assertion kept), so they hold with enterprise/ removed. The
+# examples after the port are new: they pin the rules a clean-room rebuild
+# must keep (see goals/off-enterprise/spec.md, behaviours C and G).
 require 'rails_helper'
 
 RSpec.describe DeviseOverrides::SessionsController, type: :controller do
@@ -61,6 +68,8 @@ RSpec.describe DeviseOverrides::SessionsController, type: :controller do
       end
 
       it 'writes a sign_in audit event' do
+        skip 'audit events are enterprise, absent in CE mode' unless saml_user.respond_to?(:audits)
+
         account = create(:account)
         create(:account_user, user: saml_user, account: account)
 
@@ -184,7 +193,7 @@ RSpec.describe DeviseOverrides::SessionsController, type: :controller do
   # already knows how to render, then verifying the code against the portal.
   describe 'POST #create with a portal second factor' do
     let(:totp_verify_url) { 'https://api.comvor.test/portal/api/v1/internal/fork/verify-totp' }
-    let(:portal_mfa_token) { Mfa::PortalTokenService.new(user: saml_user).generate_token }
+    let(:portal_mfa_token) { Comvor::PortalTokenService.new(user: saml_user).generate_token }
 
     def stub_totp(body, status: 200)
       stub_request(:post, totp_verify_url).to_return(status: status, body: body.to_json)
@@ -222,7 +231,7 @@ RSpec.describe DeviseOverrides::SessionsController, type: :controller do
         sign_in_with_portal_password
         minted = response.parsed_body['mfa_token']
 
-        expect(Mfa::PortalTokenService.new(token: minted).verify_token).to eq(saml_user)
+        expect(Comvor::PortalTokenService.new(token: minted).verify_token).to eq(saml_user)
       end
     end
 
@@ -370,6 +379,142 @@ RSpec.describe DeviseOverrides::SessionsController, type: :controller do
 
       expect(response).to have_http_status(:success)
       expect(a_request(:post, verify_url)).not_to have_been_made
+    end
+  end
+
+  # A saml user's Chatwoot password is never a credential, whatever the
+  # delegation switch says. These sign in with the user's REAL Chatwoot
+  # password, so a pass cannot come from the password simply being wrong.
+  describe 'POST #create with a saml user\'s own Chatwoot password' do
+    let(:chatwoot_password) { 'ChatwootSideOnly1!' }
+    let(:saml_login_refusal) do
+      message = I18n.t('messages.login_saml_user')
+      { status: 401, body: { 'success' => false, 'message' => message, 'errors' => [message] } }
+    end
+
+    it 'gives the saml refusal with delegation off' do
+      post :create, params: { email: saml_user.email, password: chatwoot_password }
+
+      expect(rendered_refusal).to eq(saml_login_refusal)
+      expect(response.headers['access-token']).to be_nil
+    end
+
+    # Chatwoot's own MFA path finds the user by email and checks the local
+    # password itself (DeviseOverrides::SessionsController#create), so it must
+    # never be reached: it would answer with a challenge the local factor
+    # can complete.
+    it 'refuses before Chatwoot\'s own mfa challenge, with delegation off' do
+      saml_user.update!(otp_required_for_login: true)
+
+      post :create, params: { email: saml_user.email, password: chatwoot_password }
+
+      expect(rendered_refusal).to eq(saml_login_refusal)
+      expect(response.parsed_body).not_to have_key('mfa_token')
+    end
+
+    it 'finds the saml user however the email is cased or padded' do
+      saml_user.update!(otp_required_for_login: true)
+
+      post :create, params: { email: "  #{saml_user.email.upcase} ", password: chatwoot_password }
+
+      expect(rendered_refusal).to eq(saml_login_refusal)
+      expect(response.parsed_body).not_to have_key('mfa_token')
+    end
+
+    it 'asks the portal, not the local digest, with delegation on' do
+      stub_verify({ ok: false, totp_required: false })
+
+      sign_in_with_portal_password(password: chatwoot_password)
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body['errors']).to eq([I18n.t('devise_token_auth.sessions.bad_credentials')])
+      expect(response.headers['access-token']).to be_nil
+      expect(a_request(:post, verify_url)).to have_been_made
+    end
+
+    # Only a VALID sso_auth_token is the exception: a made-up one must not
+    # switch the saml check off.
+    it 'is not let through by an sso_auth_token that does not verify' do
+      post :create, params: { email: saml_user.email, password: chatwoot_password, sso_auth_token: 'not-a-real-token' }
+
+      expect(rendered_refusal).to eq(saml_login_refusal)
+      expect(response.headers['access-token']).to be_nil
+    end
+  end
+
+  # The challenge after a portal second factor is answered by the portal
+  # alone: nothing on the second leg may fall through to Chatwoot's own MFA
+  # check (the local factor), let alone to a password sign-in.
+  describe 'POST #create on the portal second leg' do
+    let(:totp_verify_url) { 'https://api.comvor.test/portal/api/v1/internal/fork/verify-totp' }
+    let(:portal_mfa_token) { Comvor::PortalTokenService.new(user: saml_user).generate_token }
+    let(:local_factor) { instance_double(Mfa::AuthenticationService, authenticate: true) }
+
+    # A local factor that would accept anything: if the second leg ever
+    # reached Chatwoot's own MFA check, these would sign the user in.
+    before do
+      allow(Mfa::AuthenticationService).to receive(:new).and_return(local_factor)
+      saml_user.update!(otp_required_for_login: true)
+    end
+
+    it 'never consults the local factor when the portal rejects the code' do
+      stub_request(:post, totp_verify_url).to_return(status: 200, body: { ok: false }.to_json)
+
+      with_modified_env(portal_env) { post :create, params: { mfa_token: portal_mfa_token, otp_code: '123456' } }
+
+      expect(response).to have_http_status(:bad_request)
+      expect(response.headers['access-token']).to be_nil
+      expect(Mfa::AuthenticationService).not_to have_received(:new)
+    end
+
+    it 'never consults the local factor when delegation is off' do
+      post :create, params: { mfa_token: portal_mfa_token, otp_code: '123456' }
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.parsed_body['error']).to eq(I18n.t('errors.mfa.invalid_token'))
+      expect(response.headers['access-token']).to be_nil
+      expect(Mfa::AuthenticationService).not_to have_received(:new)
+    end
+
+    it 'ignores a password sent along with the challenge' do
+      stub_request(:post, totp_verify_url).to_return(status: 200, body: { ok: false }.to_json)
+
+      with_modified_env(portal_env) do
+        post :create, params: { mfa_token: portal_mfa_token, otp_code: '123456', email: saml_user.email, password: 'ChatwootSideOnly1!' }
+      end
+
+      expect(response.headers['access-token']).to be_nil
+      expect(Mfa::AuthenticationService).not_to have_received(:new)
+    end
+
+    # The same, with a real local factor rather than a stand-in (needs the
+    # MFA encryption keys, as Chatwoot's own MFA specs do).
+    context 'with Chatwoot MFA really set up for the saml user' do
+      before do
+        skip('Skipping since MFA is not configured in this environment') unless Chatwoot.encryption_configured?
+        allow(Mfa::AuthenticationService).to receive(:new).and_call_original
+        saml_user.enable_two_factor!
+      end
+
+      it 'does not accept a valid local code for a portal challenge' do
+        stub_request(:post, totp_verify_url).to_return(status: 200, body: { ok: false }.to_json)
+
+        with_modified_env(portal_env) { post :create, params: { mfa_token: portal_mfa_token, otp_code: saml_user.current_otp } }
+
+        expect(response).to have_http_status(:bad_request)
+        expect(response.headers['access-token']).to be_nil
+      end
+    end
+
+    it 'refuses a challenge for a user who is no longer a saml user' do
+      token = portal_mfa_token
+      saml_user.update!(provider: 'email')
+
+      with_modified_env(portal_env) { post :create, params: { mfa_token: token, otp_code: '123456' } }
+
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.headers['access-token']).to be_nil
+      expect(a_request(:post, totp_verify_url)).not_to have_been_made
     end
   end
 end

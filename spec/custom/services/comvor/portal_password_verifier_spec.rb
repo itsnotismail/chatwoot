@@ -1,6 +1,10 @@
+# frozen_string_literal: true
+
+# Ported from spec/enterprise/services/internal/portal_password_verifier_spec.rb (today's Comvor
+# behaviour, every example and assertion kept), for the custom/ rebuild.
 require 'rails_helper'
 
-RSpec.describe Internal::PortalPasswordVerifier do
+RSpec.describe Comvor::PortalPasswordVerifier do
   let(:portal_env) do
     { COMVOR_PORTAL_API_URL: 'https://api.comvor.test', PORTAL_FORK_SHARED_SECRET: 'shhh' }
   end
@@ -21,6 +25,14 @@ RSpec.describe Internal::PortalPasswordVerifier do
 
     it 'is disabled when the shared secret is blank' do
       with_modified_env(portal_env.merge(PORTAL_FORK_SHARED_SECRET: nil)) { expect(described_class).not_to be_enabled }
+    end
+
+    # New in the rebuild: the same trust rule as SAML sign-in, so a password
+    # never leaves a production fork over plain HTTP.
+    it 'is disabled in production when the portal url is not https' do
+      allow(Comvor::PortalIdp).to receive(:production?).and_return(true)
+
+      with_modified_env(portal_env.merge(COMVOR_PORTAL_API_URL: 'http://api.comvor.test')) { expect(described_class).not_to be_enabled }
     end
   end
 

@@ -1,6 +1,10 @@
+# frozen_string_literal: true
+
+# Ported from spec/enterprise/services/internal/portal_totp_verifier_spec.rb (today's Comvor
+# behaviour, every example and assertion kept), for the custom/ rebuild.
 require 'rails_helper'
 
-RSpec.describe Internal::PortalTotpVerifier do
+RSpec.describe Comvor::PortalTotpVerifier do
   let(:portal_env) do
     { COMVOR_PORTAL_API_URL: 'https://api.comvor.test', PORTAL_FORK_SHARED_SECRET: 'shhh' }
   end

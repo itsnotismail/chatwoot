@@ -1,6 +1,10 @@
+# frozen_string_literal: true
+
+# Ported from spec/enterprise/services/mfa/portal_token_service_spec.rb (today's Comvor
+# behaviour, every example and assertion kept), for the custom/ rebuild.
 require 'rails_helper'
 
-RSpec.describe Mfa::PortalTokenService do
+RSpec.describe Comvor::PortalTokenService do
   let(:user) { create(:user, provider: 'saml') }
 
   def signed_jwt(payload)
