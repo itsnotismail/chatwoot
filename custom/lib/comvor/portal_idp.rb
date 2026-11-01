@@ -14,6 +14,8 @@ module Comvor::PortalIdp
   CACHE_TTL = 1.hour
   OPEN_TIMEOUT = 3
   READ_TIMEOUT = 5
+  REFETCH_INTERVAL = 1.minute
+  REFETCH_LOCK_KEY = 'comvor:portal_idp:certificates_refetched'
 
   class MetadataError < StandardError; end
 
@@ -61,10 +63,35 @@ module Comvor::PortalIdp
       saml_certificate_sha256(settings.certificate) == certificate_sha256
   end
 
-  # SHA-256 of the DER certificate the portal publishes. Raises
+  # SHA-256 of the DER certificate the portal publishes first. Raises
   # MetadataError when the metadata cannot be read, so callers fail closed.
   def certificate_sha256
-    Rails.cache.fetch("comvor:portal_idp:certificate_sha256:#{base_url}", expires_in: CACHE_TTL) { fetch_certificate_sha256 }
+    OpenSSL::Digest::SHA256.hexdigest(OpenSSL::X509::Certificate.new(certificates.first).to_der)
+  end
+
+  # The signing certificates (PEM) the portal publishes; a key rotation
+  # lists more than one. Raises MetadataError when the metadata cannot be
+  # read, so callers fail closed.
+  def certificates
+    Rails.cache.fetch(certificates_cache_key, expires_in: CACHE_TTL) { fetch_certificates }
+  end
+
+  # Reads the metadata again after a signature failure, to pick up a key the
+  # portal rotated inside the cache window. Badly signed responses are free
+  # to send, so this runs at most once per REFETCH_INTERVAL for the whole
+  # installation; otherwise it returns nil and the cached certificates stand.
+  def refetch_certificates
+    return nil unless Redis::Alfred.set(REFETCH_LOCK_KEY, 1, nx: true, ex: REFETCH_INTERVAL.to_i)
+
+    fetch_certificates.tap { |pems| Rails.cache.write(certificates_cache_key, pems, expires_in: CACHE_TTL) }
+  end
+
+  # Whether sign-in may trust the portal at all: it is configured and, in
+  # production, reached over HTTPS.
+  def secure?
+    configured? && (!production? || URI.parse(base_url).scheme == 'https')
+  rescue URI::InvalidURIError
+    false
   end
 
   # SHA-256 of a stored certificate as ruby-saml parses it at callback time.
@@ -79,14 +106,21 @@ module Comvor::PortalIdp
     nil
   end
 
-  def fetch_certificate_sha256
+  def certificates_cache_key
+    "comvor:portal_idp:certificates:#{base_url}"
+  end
+
+  def fetch_certificates
     response = fetch_metadata
     raise MetadataError, "portal metadata answered #{response.code}" unless response.is_a?(Net::HTTPSuccess)
 
-    encoded = response.body.to_s[%r{<(?:\w+:)?X509Certificate[^>]*>([^<]+)</(?:\w+:)?X509Certificate>}, 1]
+    idp = OneLogin::RubySaml::IdpMetadataParser.new.parse_to_idp_metadata_array(response.body.to_s).first
+    encoded = idp.certificates&.fetch('signing', nil)
     raise MetadataError, 'portal metadata has no signing certificate' if encoded.blank?
 
-    OpenSSL::Digest::SHA256.hexdigest(Base64.decode64(encoded.gsub(/\s/, '')))
+    encoded.map { |text| OpenSSL::X509::Certificate.new(Base64.decode64(text.gsub(/\s/, ''))).to_pem }
+  rescue ArgumentError, REXML::ParseException, OpenSSL::X509::CertificateError => e
+    raise MetadataError, "portal metadata unreadable: #{e.message}"
   end
 
   def fetch_metadata
