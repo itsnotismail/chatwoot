@@ -19,6 +19,7 @@ RSpec.describe 'POST /omniauth/comvor_saml/callback', type: :request do
 
   before do
     stub_request(:get, "#{portal}/portal/saml/metadata").to_return(status: 200, body: ComvorSamlHelpers.metadata_xml(portal_keys.last))
+    account.enable_features!('saml')
     Comvor::SamlSetting.new(account: account).save!(validate: false)
   end
 

@@ -33,11 +33,14 @@ class OmniAuth::Strategies::ComvorSaml < OmniAuth::Strategies::SAML
 
   SETUP = lambda do |env|
     request = Rack::Request.new(env)
-    account_id = (request.params['account_id'].presence || request.session[SESSION_ACCOUNT_ID]).to_s
-    raise UnavailableError unless account_id.match?(/\A[1-9]\d*\z/) && Comvor::PortalIdp.secure?
-    raise UnavailableError unless Comvor::SamlSetting.exists?(account_id: account_id)
-
     strategy = env['omniauth.strategy']
+    account_id = (request.params['account_id'].presence || request.session[SESSION_ACCOUNT_ID]).to_s
+    raise UnavailableError unless account_id.match?(/\A[1-9]\d*\z/) && Comvor::SamlSso.available?
+    # The request phase only sends the browser to the portal, so it answers
+    # alike for every account and tells nobody which ones have SSO. Whether
+    # this account may sign in is decided when the portal's answer comes back.
+    raise UnavailableError unless strategy.on_request_path? || Comvor::SamlSso.enabled_for?(Account.find_by(id: account_id))
+
     request.session[SESSION_ACCOUNT_ID] = account_id if strategy.on_request_path?
     env[ACCOUNT_ID_ENV] = account_id.to_i
     strategy.options.merge!(
@@ -47,6 +50,8 @@ class OmniAuth::Strategies::ComvorSaml < OmniAuth::Strategies::SAML
       sp_entity_id: Comvor::PortalIdp.sp_entity_id_for(account_id),
       assertion_consumer_service_url: "#{ENV.fetch('FRONTEND_URL', nil)}/omniauth/comvor_saml/callback?account_id=#{account_id}",
       name_identifier_format: EMAIL_NAME_ID_FORMAT,
+      # web or mobile, echoed back by the portal: where the signed-in user goes.
+      idp_sso_service_url_runtime_params: { RelayState: 'RelayState' },
       allowed_clock_drift: ALLOWED_CLOCK_DRIFT.to_i,
       security: OneLogin::RubySaml::Settings::DEFAULTS[:security].merge(strict_audience_validation: true, want_name_id: true)
     )
@@ -59,6 +64,20 @@ class OmniAuth::Strategies::ComvorSaml < OmniAuth::Strategies::SAML
 
   def auth_hash
     super.tap { |hash| hash.provider = USER_PROVIDER }
+  end
+
+  # Every refusal lands on the app's OmniAuth failure route, which the
+  # callbacks controller answers with the login page's SAML error, rather
+  # than on the Devise sign-in page the installation's on_failure sends to.
+  # The RelayState goes along, so the mobile app gets its answer.
+  def fail!(message_key, exception = nil)
+    env['omniauth.error'] = exception
+    env['omniauth.error.type'] = message_key.to_sym
+    env['omniauth.error.strategy'] = self
+    log :error, "Authentication failure! #{message_key}: #{exception&.class}, #{exception&.message}"
+
+    mobile = request.params['RelayState'] == 'mobile' ? '&RelayState=mobile' : ''
+    redirect("#{script_name}#{path_prefix}/failure?message=#{Rack::Utils.escape(message_key)}&strategy=#{name}#{mobile}")
   end
 
   private
@@ -108,6 +127,8 @@ class OmniAuth::Strategies::ComvorSaml < OmniAuth::Strategies::SAML
     raise ValidationError, 'SAML response has no matching Destination' unless response.destination == settings.assertion_consumer_service_url
     raise ValidationError, 'SAML response issuer is not the Comvor portal' unless response.issuers == [settings.idp_entity_id]
     raise ValidationError, 'SAML assertion audience is not this account' unless response.audiences.uniq == [settings.sp_entity_id]
+    # Users are matched by the NameID, so it has to be an email address.
+    raise ValidationError, 'SAML NameID is not an email address' unless response.name_id_format == EMAIL_NAME_ID_FORMAT
   end
 
   # Records the assertion ID until the assertion can no longer be accepted,
@@ -126,20 +147,20 @@ class OmniAuth::Strategies::ComvorSaml < OmniAuth::Strategies::SAML
   end
 
   # The later of the signed assertion's NotOnOrAfter times. An assertion
-  # without one could be replayed forever, so it is refused.
+  # whose Conditions has none could be replayed forever, so it is refused.
   def replay_window_end(response)
+    raise ValidationError, 'SAML assertion has no NotOnOrAfter' if response.not_on_or_after.nil?
+
     confirmations = response.send(:xpath_from_signed_assertion, '/a:Subject/a:SubjectConfirmation/a:SubjectConfirmationData')
     times = [response.not_on_or_after] + confirmations.filter_map { |node| node.attributes['NotOnOrAfter'] }.map { |value| Time.zone.parse(value) }
-    times.compact.max || raise(ValidationError, 'SAML assertion has no NotOnOrAfter')
+    times.compact.max
   end
 
-  # Sign-out goes through the portal (Comvor::PortalIdp), not SAML single
-  # logout, so these paths are passed on to the app like any other.
-  def other_phase_for_slo
-    call_app!
-  end
-
-  def other_phase_for_spslo
+  # Every other path under /omniauth/comvor_saml is the app's, without the
+  # setup: no SP metadata is served (comvor-api provisions the portal's side),
+  # so it cannot tell which accounts have SSO, and sign-out goes through the
+  # portal (Comvor::PortalIdp), not SAML single logout.
+  def other_phase
     call_app!
   end
 end

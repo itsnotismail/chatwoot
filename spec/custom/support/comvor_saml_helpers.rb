@@ -49,7 +49,7 @@ module ComvorSamlHelpers
   # them to build the response an attacker or a misconfiguration would send.
   def saml_response(key:, cert:, account_id:, **overrides)
     values = {
-      email: 'agent@example.com', issuer: "#{PORTAL}/portal/saml/metadata",
+      email: 'agent@example.com', name_id_format: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress', issuer: "#{PORTAL}/portal/saml/metadata",
       audiences: ["comvor-chatwoot-account-#{account_id}"], destination: acs_for(account_id), recipient: acs_for(account_id),
       assertion_id: "id-#{SecureRandom.hex(20)}", not_on_or_after: 90.seconds.from_now, confirmation_not_on_or_after: 90.seconds.from_now,
       sign_assertion: true, sign_response: true
@@ -81,7 +81,7 @@ module ComvorSamlHelpers
         ID="#{values[:assertion_id]}" Version="2.0" IssueInstant="#{now.iso8601}">
         <saml:Issuer>#{values[:issuer]}</saml:Issuer>
         <saml:Subject>
-          <saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">#{values[:email]}</saml:NameID>
+          <saml:NameID#{xml_attribute('Format', values[:name_id_format])}>#{values[:email]}</saml:NameID>
           <saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
             <saml:SubjectConfirmationData#{xml_attribute('NotOnOrAfter', values[:confirmation_not_on_or_after])}#{xml_attribute('Recipient', values[:recipient])}/>
           </saml:SubjectConfirmation>

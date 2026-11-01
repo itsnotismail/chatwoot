@@ -33,6 +33,7 @@ RSpec.describe OmniAuth::Strategies::ComvorSaml do
   end
 
   def create_setting(for_account)
+    for_account.enable_features!('saml')
     # The row only switches SSO on; the strategy reads nothing else from it.
     Comvor::SamlSetting.new(account: for_account, sso_url: "#{portal}/portal/saml/sso", idp_entity_id: metadata_url,
                             sp_entity_id: "comvor-chatwoot-account-#{for_account.id}", certificate: cert.to_pem).save!(validate: false)
@@ -43,6 +44,10 @@ RSpec.describe OmniAuth::Strategies::ComvorSaml do
     env['rack.session'] = {}
     status, headers, = described_class.new(app).call(env)
     [status, headers, env]
+  end
+
+  def callback_with_relay_state(relay_state)
+    strategy_call("/omniauth/comvor_saml/callback?account_id=#{account.id}", params: { 'SAMLResponse' => signed, 'RelayState' => relay_state })
   end
 
   def callback(saml_response, account_id: account.id)
@@ -221,6 +226,20 @@ RSpec.describe OmniAuth::Strategies::ComvorSaml do
     it 'refuses an assertion that never expires' do
       expect_refused(callback(signed(not_on_or_after: nil, confirmation_not_on_or_after: nil)), 'NotOnOrAfter')
     end
+
+    it 'refuses an assertion whose conditions never expire, even if its subject confirmation does' do
+      expect_refused(callback(signed(not_on_or_after: nil, confirmation_not_on_or_after: 90.seconds.from_now)), 'NotOnOrAfter')
+    end
+  end
+
+  describe 'NameID' do
+    it 'refuses a NameID that is not an email address, since users are matched by it' do
+      expect_refused(callback(signed(name_id_format: 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent')), 'NameID')
+    end
+
+    it 'refuses a NameID without a format' do
+      expect_refused(callback(signed(name_id_format: nil)), 'NameID')
+    end
   end
 
   describe 'replay' do
@@ -254,11 +273,34 @@ RSpec.describe OmniAuth::Strategies::ComvorSaml do
 
   describe 'setup' do
     it 'refuses an account without SAML settings' do
-      expect_refused(callback(signed, account_id: create(:account).id), 'saml_unavailable')
+      expect_refused(callback(signed, account_id: create(:account).tap { |other| other.enable_features!('saml') }.id), 'saml_unavailable')
     end
 
     it 'refuses without an account id' do
       expect_refused(strategy_call('/omniauth/comvor_saml/callback', params: { 'SAMLResponse' => signed }), 'saml_unavailable')
+    end
+
+    it 'refuses an account without the saml feature' do
+      account.disable_features!('saml')
+
+      expect_refused(callback(signed), 'saml_unavailable')
+    end
+
+    it 'refuses when SAML sign-in is switched off for the installation' do
+      allow(GlobalConfigService).to receive(:load).and_call_original
+      allow(GlobalConfigService).to receive(:load).with('ENABLE_SAML_SSO_LOGIN', 'true').and_return('false')
+
+      expect_refused(callback(signed), 'saml_unavailable')
+      expect_refused(strategy_call("/omniauth/comvor_saml?account_id=#{account.id}"), 'saml_unavailable')
+    end
+
+    it 'sends a refusal to the failure page, with the mobile app named when the user came from it' do
+      account.disable_features!('saml')
+
+      status, headers, = callback_with_relay_state('mobile')
+
+      expect(status).to eq(302)
+      expect(headers['Location']).to eq('/omniauth/failure?message=saml_unavailable&strategy=comvor_saml&RelayState=mobile')
     end
 
     it 'refuses a portal reached over plain HTTP in production' do
@@ -285,6 +327,34 @@ RSpec.describe OmniAuth::Strategies::ComvorSaml do
       expect(request.root['AssertionConsumerServiceURL']).to eq(ComvorSamlHelpers.acs_for(account.id))
       expect(request.at_xpath('//saml:Issuer', 'saml' => 'urn:oasis:names:tc:SAML:2.0:assertion').text)
         .to eq("comvor-chatwoot-account-#{account.id}")
+    end
+
+    it 'passes the RelayState on to the portal' do
+      _, headers, = strategy_call("/omniauth/comvor_saml?account_id=#{account.id}&RelayState=mobile")
+
+      expect(Rack::Utils.parse_query(URI.parse(headers['Location']).query)['RelayState']).to eq('mobile')
+    end
+
+    it 'answers alike for an account without the saml feature or settings' do
+      other = create(:account)
+      status, headers, env = strategy_call("/omniauth/comvor_saml?account_id=#{other.id}")
+
+      expect(env['omniauth.error']).to be_nil
+      expect(status).to eq(302)
+      expect(headers['Location']).to start_with("#{portal}/portal/saml/sso?")
+      expect(authn_request(headers['Location']).root['AssertionConsumerServiceURL']).to eq(ComvorSamlHelpers.acs_for(other.id))
+    end
+  end
+
+  describe 'other paths' do
+    it 'passes the SP metadata path on to the app, for an account with settings or without' do
+      [account, create(:account)].each do |for_account|
+        reached.clear
+        _, _, env = strategy_call("/omniauth/comvor_saml/metadata?account_id=#{for_account.id}")
+
+        expect(reached.size).to eq(1)
+        expect(env['omniauth.error']).to be_nil
+      end
     end
   end
 end
