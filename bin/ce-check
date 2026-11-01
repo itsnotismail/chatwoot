@@ -27,6 +27,11 @@ if pgrep -f '(^|/)rspec( |$)' >/dev/null; then
   exit 2
 fi
 
+# Its own test database, never the dev one .env names (bin/comvor-test-db).
+# shellcheck source=bin/comvor-test-db
+source "$repo/bin/comvor-test-db"
+(cd "$repo" && comvor_test_db_ready)
+
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/ce-check.XXXXXX")"
 tree="$scratch/tree"
 cleanup() {
@@ -48,7 +53,7 @@ status=0
 bundle exec rspec --format progress --format json --out "$scratch/results.json" "$@" || status=$?
 
 echo
-echo "ce-check: CE mode at $sha (enterprise/ and spec/enterprise/ removed): $*"
+echo "ce-check: CE mode at $sha (enterprise/ and spec/enterprise/ removed), database $POSTGRES_DATABASE: $*"
 if [ ! -s "$scratch/results.json" ]; then
   echo "ce-check: rspec produced no results (exit $status); see the output above."
   exit 1

@@ -25,6 +25,11 @@ if pgrep -f '(^|/)rspec( |$)' >/dev/null; then
   exit 2
 fi
 
+# Its own test database, never the dev one .env names (bin/comvor-test-db).
+# shellcheck source=bin/comvor-test-db
+source "$repo/bin/comvor-test-db"
+(cd "$repo" && comvor_test_db_ready)
+
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/e-check.XXXXXX")"
 trap 'rm -rf "$scratch"' EXIT
 
@@ -32,7 +37,7 @@ status=0
 bundle exec rspec --format progress --format json --out "$scratch/results.json" "$@" || status=$?
 
 echo
-echo "e-check: E mode at $(git rev-parse --short HEAD) plus working tree (enterprise/ present): $*"
+echo "e-check: E mode at $(git rev-parse --short HEAD) plus working tree (enterprise/ present), database $POSTGRES_DATABASE: $*"
 if [ ! -s "$scratch/results.json" ]; then
   echo "e-check: rspec produced no results (exit $status); see the output above."
   exit 1

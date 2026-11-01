@@ -41,16 +41,9 @@ e:
   # account; Comvor refuses a custom role of another account (or none).
   - example: spec/enterprise/controllers/api/v1/accounts/saml_settings_controller_spec.rb:205
     superseded_by: spec/custom/requests/comvor_saml_settings_spec.rb:495
-  # Enterprise SAML settings examples that already fail before this work.
-  - example: spec/enterprise/controllers/api/v1/accounts/saml_settings_controller_spec.rb:142
-    preexisting: true
-    base: 9960e1b220
-  - example: spec/enterprise/controllers/api/v1/accounts/saml_settings_controller_spec.rb:155
-    preexisting: true
-    base: 9960e1b220
-  - example: spec/enterprise/controllers/api/v1/accounts/saml_settings_controller_spec.rb:256
-    preexisting: true
-    base: 9960e1b220
+  # Expects sp_entity_id http://localhost:3000/saml/sp/N, but .env's
+  # FRONTEND_URL reaches the test environment (fails at base too, on a
+  # clean test database).
   - example: spec/enterprise/models/account_saml_settings_spec.rb:60
     preexisting: true
     base: 9960e1b220

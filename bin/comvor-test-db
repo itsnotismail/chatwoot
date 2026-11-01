@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Comvor: the test database the spec verifiers (bin/e-check, bin/ce-check)
+# use, sourced by both. .env sets POSTGRES_DATABASE for every environment,
+# test included, so without this the specs would run against the local dev
+# database. dotenv never overrides a variable that is already set, so the
+# export below wins. Creates the database and loads the schema when it is
+# missing; rspec's maintain_test_schema keeps it current after that.
+#
+#   source bin/comvor-test-db && comvor_test_db_ready
+export POSTGRES_DATABASE="${COMVOR_TEST_DATABASE:-chatwoot_off_enterprise_test}"
+export RAILS_ENV=test
+
+comvor_test_db_ready() {
+  if RAILS_ENV=test bundle exec rails runner 'ActiveRecord::Base.connection.execute("SELECT 1")' >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "comvor-test-db: creating $POSTGRES_DATABASE and loading the schema" >&2
+  RAILS_ENV=test bundle exec rails db:create db:schema:load >/dev/null
+}
