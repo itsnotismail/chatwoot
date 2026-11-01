@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Comvor: the test database the spec verifiers (bin/e-check, bin/ce-check)
+# use, sourced by both. .env sets POSTGRES_DATABASE for every environment,
+# test included, so without this the specs would run against the local dev
+# database. dotenv never overrides a variable that is already set, so the
+# export below wins. A caller's DATABASE_URL would win over both, so it is
+# unset. The name must end in _test, so a typo cannot point the specs (and
+# the schema load below) at a real database. The database is created and the
+# schema loaded only when the probe says it does not exist; any other failure
+# aborts. rspec's maintain_test_schema keeps it current after that.
+#
+# Source it in a subshell, so your own shell keeps its environment:
+#
+#   ( eval "$(rbenv init -)"; source bin/comvor-test-db && comvor_test_db_ready && bundle exec rspec spec/custom/foo_spec.rb )
+unset DATABASE_URL
+export POSTGRES_DATABASE="${COMVOR_TEST_DATABASE:-chatwoot_off_enterprise_test}"
+export RAILS_ENV=test
+
+comvor_test_db_ready() {
+  case "$POSTGRES_DATABASE" in
+    *_test) ;;
+    *)
+      echo "comvor-test-db: refusing database '$POSTGRES_DATABASE': the name must end in _test" >&2
+      return 1
+      ;;
+  esac
+
+  local probe
+  if probe="$(bundle exec rails runner 'begin; ActiveRecord::Base.connection.execute("SELECT 1"); rescue ActiveRecord::NoDatabaseError; puts "comvor-test-db:missing"; end' 2>&1)" &&
+    [[ "$probe" != *comvor-test-db:missing* ]]; then
+    return 0
+  fi
+  if [[ "$probe" != *comvor-test-db:missing* ]]; then
+    echo "comvor-test-db: cannot reach $POSTGRES_DATABASE, and it is not a missing database:" >&2
+    echo "$probe" >&2
+    return 1
+  fi
+  echo "comvor-test-db: creating $POSTGRES_DATABASE and loading the schema" >&2
+  bundle exec rails db:create db:schema:load >/dev/null
+}

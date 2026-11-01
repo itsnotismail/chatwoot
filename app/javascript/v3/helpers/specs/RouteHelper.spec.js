@@ -65,6 +65,24 @@ describe('#validateRouteAccess', () => {
     expect(next).toHaveBeenCalledWith('/app/login');
   });
 
+  it('redirects to login from the SSO page without enterprise or SAML login', () => {
+    validateRouteAccess(
+      { name: 'sso_login', meta: { requireEnterprise: true } },
+      next,
+      { isEnterprise: 'false', allowedLoginMethods: ['email'] }
+    );
+    expect(next).toHaveBeenCalledWith('/app/login');
+  });
+
+  it('continues to the SSO page when SAML login is allowed without enterprise', () => {
+    validateRouteAccess(
+      { name: 'sso_login', meta: { requireEnterprise: true } },
+      next,
+      { isEnterprise: 'false', allowedLoginMethods: ['email', 'saml'] }
+    );
+    expect(next).toHaveBeenCalledWith();
+  });
+
   it('continues to the route in every other case', () => {
     validateRouteAccess({ name: 'reset_password' }, next);
     expect(clearBrowserSessionCookies).not.toHaveBeenCalled();

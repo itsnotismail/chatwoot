@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Comvor: run specs in CE mode, i.e. against HEAD with enterprise/ and
+# spec/enterprise/ deleted, the way upstream's run_foss_spec.yml job does.
+#
+#   bin/ce-check                       # spec/custom + every file in the ce: baseline
+#   bin/ce-check spec/custom spec/foo_spec.rb:12
+#
+# Works on a throwaway worktree of HEAD (commit first; uncommitted changes are
+# not seen). Uses this checkout's .env and node_modules and therefore the same
+# test database, so it refuses to start while another rspec is running.
+# Exits 0 only when every failure is in the ce: baseline of
+# custom/spec_baseline.yml and no baseline entry that ran passed
+# (bin/spec-baseline judges the result).
+set -euo pipefail
+
+repo="$(git rev-parse --show-toplevel)"
+if [ $# -eq 0 ]; then
+  # Run the baseline's own files too (HEAD's baseline, the one judged), so
+  # an entry that starts passing is reported as stale.
+  baseline_files="$(git -C "$repo" show HEAD:custom/spec_baseline.yml | ruby -ryaml -e 'puts YAML.safe_load($stdin.read).fetch("ce").map { |e| e["example"].split(":").first }.uniq')"
+  # shellcheck disable=SC2086
+  set -- spec/custom $baseline_files
+fi
+
+if pgrep -f '(^|/)rspec( |$)' >/dev/null; then
+  echo "ce-check: another rspec is running; it shares the test database. Try again when it finishes." >&2
+  exit 2
+fi
+
+# Its own test database, never the dev one .env names (bin/comvor-test-db).
+# shellcheck source=bin/comvor-test-db
+source "$repo/bin/comvor-test-db"
+(cd "$repo" && comvor_test_db_ready)
+
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/ce-check.XXXXXX")"
+tree="$scratch/tree"
+cleanup() {
+  git -C "$repo" worktree remove --force "$tree" >/dev/null 2>&1 || true
+  rm -rf "$scratch"
+}
+trap cleanup EXIT
+
+sha="$(git -C "$repo" rev-parse --short HEAD)"
+git -C "$repo" worktree add --quiet --detach "$tree" HEAD
+for shared in .env node_modules; do
+  if [ -e "$repo/$shared" ]; then ln -s "$repo/$shared" "$tree/$shared"; fi
+done
+
+cd "$tree"
+rm -rf enterprise spec/enterprise
+
+status=0
+bundle exec rspec --format progress --format json --out "$scratch/results.json" "$@" || status=$?
+
+echo
+echo "ce-check: CE mode at $sha (enterprise/ and spec/enterprise/ removed), database $POSTGRES_DATABASE: $*"
+if [ ! -s "$scratch/results.json" ]; then
+  echo "ce-check: rspec produced no results (exit $status); see the output above."
+  exit 1
+fi
+ruby bin/spec-baseline ce "$scratch/results.json" "$status"

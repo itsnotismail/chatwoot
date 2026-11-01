@@ -8,7 +8,7 @@
 # X-Comvor-Portal-Secret is the one that matters most: it authenticates
 # comvor-api -> fork calls, and whoever holds it can mint a Chatwoot session for
 # ANY email in ANY SAML-enabled account (see
-# enterprise/app/controllers/internal/portal_agent_sessions_controller.rb). That
+# custom/app/controllers/comvor/portal_agent_sessions_controller.rb). That
 # is a blast radius closer to PLATFORM_API_TOKEN than to one user's
 # api_access_token, and a single key serves both directions.
 #

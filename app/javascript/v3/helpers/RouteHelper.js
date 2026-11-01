@@ -45,6 +45,7 @@ export const validateRouteAccess = (to, next, chatwootConfig = {}) => {
   // SAML route has an attribute (requireEnterprise) in it's definition
   const isEnterpriseOnlyPath =
     chatwootConfig.isEnterprise !== 'true' &&
+    !(chatwootConfig.allowedLoginMethods || []).includes('saml') &&
     to.meta &&
     to.meta.requireEnterprise;
 

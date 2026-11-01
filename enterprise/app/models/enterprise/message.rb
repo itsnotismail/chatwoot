@@ -1,73 +1,32 @@
 module Enterprise::Message
-  def self.prepended(base)
-    # Runs inside the message's insert transaction, so the takeover's row lock and status_revision bump commit together
-    # with the human reply. A bot create guarded by expected_status_revision therefore either commits before this
-    # reply (and the takeover lands after it) or sees the bumped revision; it can no longer slip in between the reply
-    # committing and the conversation opening.
-    base.after_create :open_pending_conversation_for_human_response
-  end
-
   private
 
-  def open_pending_conversation_for_human_response
+  def mark_pending_conversation_as_open_for_human_response
     return unless captain_pending_conversation?
     return unless human_response?
     return if private?
     return if template_bootstrap_message?
 
-    # A separate instance, so the message's after_create_commit updates to the association instance (waiting_since,
-    # first_reply_created_at) cannot overwrite the saved status change before its commit callbacks run.
-    takeover = ::Conversation.find(conversation_id)
-    takeover.lock!
-    return unless takeover.pending?
-
-    open_as_system(takeover)
-    conversation.sync_takeover_status_from(takeover)
-    @human_takeover_conversation = takeover
-  end
-
-  def open_as_system(takeover)
     previous_user = Current.user
     previous_executed_by = Current.executed_by
     Current.user = nil
     Current.executed_by = nil
-    takeover.human_takeover_callbacks = :deferred
-    takeover.open!
-  ensure
-    Current.user = previous_user
-    Current.executed_by = previous_executed_by
-  end
 
-  # Called from the core after_create_commit chain, before message_created is dispatched. The status change itself
-  # committed with this message; what is left runs only after commit: the takeover's status webhooks, activity and
-  # assignment callbacks (dispatched exactly once, see Enterprise::Conversation#dispatch_human_takeover_callbacks)
-  # and the auto-open activity job.
-  def mark_pending_conversation_as_open_for_human_response
-    takeover = @human_takeover_conversation
-    return if takeover.blank?
+    begin
+      conversation.open!
+      return unless conversation.saved_change_to_status?
 
-    @human_takeover_conversation = nil
-    takeover.dispatch_human_takeover_callbacks
-    create_captain_auto_open_activity_message
+      create_captain_auto_open_activity_message
+    ensure
+      Current.user = previous_user
+      Current.executed_by = previous_executed_by
+    end
   end
 
   def captain_pending_conversation?
     return false unless conversation.pending?
 
-    return true if ::CaptainInbox.exists?(inbox_id: conversation.inbox_id)
-
-    # An agent-bot-handled conversation is taken over when a HUMAN AGENT
-    # replies into it.
-    #
-    # sender.is_a?(User) is NOT redundant with the human_response? check the
-    # caller already makes, and it is the important part. human_response?
-    # passes on EITHER a User sender OR content_attributes['external_echo'],
-    # and the echo arm is a live hazard: a bot reply carrying an image becomes
-    # two Meta sends that overwrite each other's source_id, so the attachment's
-    # echo never dedupes and returns as a NEW outgoing message with a nil
-    # sender and external_echo set. Without this clause the bot would take
-    # conversations over from ITSELF whenever it sent a product photo.
-    conversation.inbox.active_bot? && sender.is_a?(User)
+    ::CaptainInbox.exists?(inbox_id: conversation.inbox_id)
   end
 
   def template_bootstrap_message?

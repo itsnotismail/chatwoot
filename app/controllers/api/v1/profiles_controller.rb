@@ -5,14 +5,6 @@ class Api::V1::ProfilesController < Api::BaseController
 
   def update
     if password_params[:password].present?
-      # Comvor: provider='saml' users are managed by the portal, the sole
-      # credential authority for them; their Chatwoot password is random and
-      # unusable, so an in-dashboard change here must be declined server-side.
-      if @user.provider == 'saml'
-        render json: { error: I18n.t('messages.reset_password_saml_user') }, status: :forbidden
-        return
-      end
-
       render_could_not_create_error('Invalid current password') and return unless @user.valid_password?(password_params[:current_password])
 
       @user.update!(password_params.except(:current_password))
@@ -89,3 +81,5 @@ class Api::V1::ProfilesController < Api::BaseController
     )
   end
 end
+
+Api::V1::ProfilesController.prepend_mod_with('Api::V1::ProfilesController')
