@@ -195,6 +195,20 @@ RSpec.describe Message do
       expect(Conversations::ActivityMessageJob).not_to have_been_enqueued
     end
 
+    it 'forgets a takeover that rolled back when the same reply is saved again' do
+      reply = build(:message, conversation: conversation, message_type: :outgoing, sender: create(:user))
+      ActiveRecord::Base.transaction do
+        reply.save!
+        raise ActiveRecord::Rollback
+      end
+      Conversation.find(conversation.id).update!(status: :open) # someone else opened it meanwhile
+      clear_enqueued_jobs
+
+      reply.save!
+
+      expect(Conversations::ActivityMessageJob).not_to have_been_enqueued
+    end
+
     it 'leaves an open conversation alone' do
       conversation.update!(status: :open)
 
