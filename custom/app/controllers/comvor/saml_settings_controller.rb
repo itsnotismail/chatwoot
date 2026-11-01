@@ -35,8 +35,9 @@ class Comvor::SamlSettingsController < Api::V1::Accounts::BaseController
     save_setting(@setting || Comvor::SamlSetting.new(account: Current.account))
   end
 
-  # Every row of the account (the table allows more than one), and the
-  # users' reset even when there was none, so the lever can be pulled again.
+  # Every row of the account (the table allows more than one). Each destroyed
+  # row enqueues its own reset job (N rows, N idempotent jobs), and one is
+  # enqueued here when there was none, so the lever can be pulled again.
   def destroy
     destroyed = Comvor::SamlSetting.transaction { Comvor::SamlSetting.of_account(Current.account.id).destroy_all }
     Comvor::SamlProviderResetJob.perform_later(Current.account.id) if destroyed.empty?
