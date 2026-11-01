@@ -24,7 +24,12 @@ RSpec.describe Comvor::SamlSetting do
     setting = described_class.create!(portal_settings)
 
     expect(described_class.table_name).to eq('account_saml_settings')
-    expect(account.reload.comvor_saml_setting).to eq(setting)
+    # By class name and id, not ==: the test env reloads classes (cache_classes
+    # false), and upstream's ApplicationMailer adds a view path when first
+    # autoloaded, so the next request unloads every constant. described_class
+    # is then the class from before that reload, the association's the one after.
+    reached = account.reload.comvor_saml_setting
+    expect([reached.class.name, reached.id]).to eq([described_class.name, setting.id])
   end
 
   it 'accepts the portal as identity provider' do
