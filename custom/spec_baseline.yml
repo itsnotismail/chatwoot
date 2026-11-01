@@ -22,10 +22,6 @@ ce:
   - example: spec/lib/chatwoot_hub_spec.rb:26
     preexisting: true
     base: 9460c4368c
-  # Takeover lives in enterprise until behaviour H is rebuilt in custom/ (task 8).
-  - example: spec/controllers/api/v1/accounts/conversations/reply_eligibilities_controller_spec.rb:24
-    preexisting: true
-    base: 9460c4368c
 
 e:
   # saml_login is served by Comvor::SamlLoginsController (prepended route),
