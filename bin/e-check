@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Comvor: run specs in E mode, i.e. the current tree with enterprise/ present,
+# the twin of bin/ce-check.
+#
+#   bin/e-check                        # spec/custom + every file in the e: baseline
+#   bin/e-check spec/custom spec/foo_spec.rb:12
+#
+# Runs against the working tree as it is (uncommitted changes included). It
+# shares the test database with every other rspec, so it refuses to start
+# while one is running. Exits 0 only when every failure is in the e: baseline
+# of custom/spec_baseline.yml and no baseline entry that ran passed
+# (bin/spec-baseline judges the result).
+set -euo pipefail
+
+repo="$(git rev-parse --show-toplevel)"
+cd "$repo"
+if [ $# -eq 0 ]; then
+  baseline_files="$(ruby -ryaml -e 'puts YAML.safe_load_file("custom/spec_baseline.yml").fetch("e").map { |e| e["example"].split(":").first }.uniq')"
+  # shellcheck disable=SC2086
+  set -- spec/custom $baseline_files
+fi
+
+if pgrep -f '(^|/)rspec( |$)' >/dev/null; then
+  echo "e-check: another rspec is running; it shares the test database. Try again when it finishes." >&2
+  exit 2
+fi
+
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/e-check.XXXXXX")"
+trap 'rm -rf "$scratch"' EXIT
+
+status=0
+bundle exec rspec --format progress --format json --out "$scratch/results.json" "$@" || status=$?
+
+echo
+echo "e-check: E mode at $(git rev-parse --short HEAD) plus working tree (enterprise/ present): $*"
+if [ ! -s "$scratch/results.json" ]; then
+  echo "e-check: rspec produced no results (exit $status); see the output above."
+  exit 1
+fi
+ruby bin/spec-baseline e "$scratch/results.json" "$status"
