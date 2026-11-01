@@ -77,7 +77,7 @@ These lines are unchanged upstream code. If upstream removes or renames one, the
 These edits predate this work and are not about `enterprise/`. The rule for all of them: keep ours, and re-apply any hunk upstream rewrites. `git diff 00837019b5 HEAD -- <path>` shows each one. Moving them into `custom/` is future work.
 
 - **Branding.** Commits `ac67001efb`, `7c3fd419ed`, `5ba9d18b9f`, `d5d1064129`, `df2181e8d6`.
-  - `public/` icons and brand assets, `theme/colors.js`, the administrate `_variables.scss` files, and `_next-colors.scss`.
+  - `public/` icons and brand assets (`manifest.json` and `browserconfig.xml` included), `theme/colors.js`, the administrate `_variables.scss` files, and `_next-colors.scss`.
   - `Logo.vue`, `AudioRecorder.vue`, `EmojiInput.vue`, `useBranding.js` and `shared/helpers/branding.js` (with its spec), `entrypoints/{dashboard,v3app}.js`.
   - The en.json strings `login`, `resetPassword` and `signup`.
   - `layouts/vueapp.html.erb`, `installation/onboarding/index.html.erb`, `integrations/app.rb`, `config/installation_config.yml`, `config/schedule.yml`, `lib/chatwoot_hub.rb` (phone-home off: CE baseline `spec/lib/chatwoot_hub_spec.rb:18`/`:26`).
@@ -94,7 +94,7 @@ These edits predate this work and are not about `enterprise/`. The rule for all 
   - Instagram: `856a21d019`.
   - Widget: `54ffaa04e6`, `c4fc0c9ad1`.
   - Files: `facebook/message_builder.rb`, `send_on_facebook_service.rb`, `human_agent_tag_helpers.rb`, `instagram/*send*`, `Facebook.vue`, `Reauthorize.vue`, `widget/store/modules/agent.js`, `widget/inbox_members/index.json.jbuilder`, and their specs.
-- **Ops.** `.github/workflows/deploy.yml` (CD), `docker/Dockerfile` (`1bd059d24e`), `AGENTS.md`, `.gitignore`.
+- **Ops and docs.** `.github/workflows/deploy.yml` (CD), `docker/Dockerfile` (`1bd059d24e`), `AGENTS.md`, `.gitignore`, and Comvor's own design notes under `docs/superpowers/`.
 - **Upstream fixes the fork took after `00837019b5`.** These are not Comvor's: `articles_controller.rb`, `article.rb`, `FullEditor.vue`, `PortalsArticlesNewPage.vue`, and the instagram send services in part. Take upstream's.
 
 ## 4. Verifiers and the baseline (run after every merge)
@@ -146,7 +146,10 @@ Run each with rbenv initialised (`eval "$(rbenv init -)"`).
 - **A ruby-saml private method.** The replay TTL reads the signed SubjectConfirmationData through `xpath_from_signed_assertion` (`send`), pinned at ruby-saml 1.18.1 in `Gemfile.lock`. A strategy spec guards it; re-check it on a ruby-saml upgrade.
 - **`custom/lib/omni_auth` is excluded from Zeitwerk.** The strategy is required by `comvor_saml.rb`, because middleware is built once at boot.
 - **`FRONTEND_URL` must equal comvor-api's `chatwootPublicURL` byte for byte**, trailing slash included. The SAML Destination is compared byte-equal against the ACS.
-- **The push-flag list is duplicated:** `Comvor::SamlUserBuilder::NEW_MEMBER_PUSH_FLAGS` and `Custom::AccountUser::INBOX_MEMBER_PUSH_FLAGS`. Change both together.
+- **The push-flag list exists once,** as `Custom::AccountUser::INBOX_MEMBER_PUSH_FLAGS`; `Comvor::SamlUserBuilder::NEW_MEMBER_PUSH_FLAGS` is the same constant. The builder sets the flags itself because auto inbox membership may be off.
+- **Super Admin can still set a `saml` user's password** (`app/dashboards/user_dashboard.rb`, operator only). It is left as upstream has it: `Custom::DeviseOverrides::SessionsController` never accepts a `saml` user's local password, so a password set there cannot sign anyone in.
+- **`users.provider` is per user, not per account.** A member of two accounts becomes `saml` at their first SSO sign-in to either, and from then on signs in through the portal for both (upstream behaves the same). `Comvor::SamlProviderResetJob` only puts them back when no account they belong to has SSO configured.
+- **The settings pin hashes the first certificate the portal publishes** (`Comvor::PortalIdp.certificate_sha256`), while sign-in accepts any listed one. During a portal key rotation, a row provisioned with the second certificate is refused until the first is retired; sign-in is unaffected.
 
 ### Accepted losses once `enterprise/` is gone (phase 3)
 
