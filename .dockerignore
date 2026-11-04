@@ -15,3 +15,6 @@ vendor/bundle
 .DS_Store
 *.swp
 *~
+# Comvor: production images carry no enterprise code (custom/UPSTREAM_EDITS.md).
+enterprise
+spec/enterprise

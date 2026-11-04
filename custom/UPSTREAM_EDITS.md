@@ -24,6 +24,7 @@ Comvor's own behaviour lives in `custom/`, which is Chatwoot's own extension fol
 | `app/controllers/dashboard_controller.rb:115` | `DashboardController.prepend_mod_with('DashboardController')` | The class had no hook. `Custom::DashboardController#allowed_login_methods` adds `saml` when `Comvor::SamlSso.available?`. That replaces fork commit `c7ac1411ed`, which was reverted: the method is upstream's again. | Keep. Drop it if upstream adds its own hook. `allowed_login_methods` is private: if upstream renames it, rename the override with it. |
 | `app/controllers/api/v1/profiles_controller.rb:85` | `Api::V1::ProfilesController.prepend_mod_with('Api::V1::ProfilesController')` | The class had no hook. The prepended module refuses a `saml` user's password change. This replaces `c79b8f1808`'s hunk, which was reverted. | Keep. Drop it if upstream adds a hook. |
 | `app/controllers/platform/api/v1/users_controller.rb:59` | `Platform::Api::V1::UsersController.prepend_mod_with('Platform::Api::V1::UsersController')` | The class had no hook. The prepended module refuses a Platform API `password` for a `saml` user (behaviour D). | Same as above. |
+| `.dockerignore`, last 3 lines | Excludes `enterprise` and `spec/enterprise` from the image. | Production must carry no enterprise code (licence). `ChatwootApp.enterprise?` is then false and `IS_ENTERPRISE` is false. | Keep the lines on every merge. Remove them only to roll back phase 3. The folder must be absent, not empty: `extensions` keys off the folder existing, so an empty `enterprise/` stops boot. |
 | `app/javascript/v3/helpers/RouteHelper.js:48` | `!(chatwootConfig.allowedLoginMethods \|\| []).includes('saml') &&` in `isEnterpriseOnlyPath` | `/app/login/sso` is gated on `requireEnterprise`. It must open when the server offers `saml`, enterprise or not. The frontend has no extension point. | Keep the line inside whatever condition gates `requireEnterprise` routes. Two examples in `specs/RouteHelper.spec.js` pin it; keep them too. |
 
 ### Upstream's own hooks that `custom/` depends on
@@ -164,7 +165,10 @@ Run each with rbenv initialised (`eval "$(rbenv init -)"`).
 1. **Deploy comvor-api first,** with both return addresses (the dual-ACS change). Then deploy the fork. To roll back, revert the fork merge; comvor-api keeps accepting both addresses.
 2. **Set `COMVOR_PORTAL_URL=https://app.comvor.com`** in `comvor-deploy/config/deploy.chatwoot.yml`. The `saml` reset pointer mail and an absolute sign-out `return_to` need it.
 3. **Check where comvor-api's `POST /internal/portal/agent_session` arrives from.** If it is loopback or an address in `RACK_ATTACK_ALLOWED_IPS`, upstream's safelist skips both Comvor throttles.
-4. **Phase 3 (removing `enterprise/` from the image):**
-   - first drain Sidekiq of enterprise job classes;
-   - then add `enterprise/` to the root `.dockerignore`;
-   - to roll back, drop the line and redeploy.
+
+## 8. Phase 3 (`enterprise/` out of the image)
+
+1. **Before the deploy,** check Sidekiq (Super Admin, Sidekiq page) for queued, scheduled or retrying jobs from `enterprise/app/jobs`: the `Captain::`, `Sla::`, `Enterprise::`, `Migration::` and `Portal::ArticleIndexingJob` classes, `Messages::AudioTranscriptionJob`, `Internal::AccountAnalysisJob` and `Saml::UpdateAccountUsersProviderJob`. After the deploy they cannot load and will end up in the dead set.
+2. **The `.dockerignore` lines** ship with this phase. To roll back, drop them and redeploy.
+3. **The mobile app is unaffected.** The official app (read at `2f3ff09`, 2026-11-03) never reads `IS_ENTERPRISE`. It shows its own SSO button only when the server address contains `app.chatwoot.com`, so on our host the portal deep link has always been the only SSO path.
+4. **Afterwards,** drop the old return address from comvor-api (`internal/portal/samlidp/sp.go`) and remove `ComvorSamlCallbackGuard` with the rest of the old `:saml` path.
