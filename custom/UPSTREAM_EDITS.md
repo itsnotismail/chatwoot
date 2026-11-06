@@ -162,13 +162,13 @@ Run each with rbenv initialised (`eval "$(rbenv init -)"`).
 
 ## 7. Phase-2 deploy prerequisites (enterprise still in the image)
 
-1. **Deploy comvor-api first,** with both return addresses (the dual-ACS change). Then deploy the fork. To roll back, revert the fork merge; comvor-api keeps accepting both addresses.
+1. **Deploy comvor-api first,** with both return addresses (the dual-ACS change). Then deploy the fork. To roll back, revert the fork merge; comvor-api kept accepting both addresses (historical: since 2026-11-06 it lists only `comvor_saml`'s).
 2. **Set `COMVOR_PORTAL_URL=https://app.comvor.com`** in `comvor-deploy/config/deploy.chatwoot.yml`. The `saml` reset pointer mail and an absolute sign-out `return_to` need it.
 3. **Check where comvor-api's `POST /internal/portal/agent_session` arrives from.** If it is loopback or an address in `RACK_ATTACK_ALLOWED_IPS`, upstream's safelist skips both Comvor throttles.
 
 ## 8. Phase 3 (`enterprise/` out of the image)
 
 1. **Before the deploy,** check Sidekiq (Super Admin, Sidekiq page) for queued, scheduled or retrying jobs from `enterprise/app/jobs`: the `Captain::`, `Sla::`, `Enterprise::`, `Migration::` and `Portal::ArticleIndexingJob` classes, `Messages::AudioTranscriptionJob`, `Internal::AccountAnalysisJob` and `Saml::UpdateAccountUsersProviderJob`. After the deploy they cannot load and will end up in the dead set.
-2. **The `.dockerignore` lines** ship with this phase. To roll back, drop them and redeploy. Since the cleanup below, a rollback brings enterprise's `:saml` strategy back without a guard and without a return address comvor-api accepts: sign-in still goes through `comvor_saml` only, and the settings pin still covers both models.
+2. **The `.dockerignore` lines** ship with this phase. To roll back, drop them and redeploy. Since the cleanup below, a rollback brings enterprise's `/omniauth/saml/callback` back **without `ComvorSamlCallbackGuard`**. comvor-api no longer mints for that address, but the strategy trusts whatever `sso_url` and certificate each stored row holds, and the settings pin only checks writes. So a rollback is safe only while every `account_saml_settings` row names the portal. **Before rolling back,** run the read-only check: every row's `sso_url` and `idp_entity_id` are the portal's, `sp_entity_id` is `comvor-chatwoot-account-<account_id>`, and the certificate is the one `/portal/saml/metadata` publishes. Checked 2026-11-06: 7 of 7 rows pass, one certificate, equal to the published one.
 3. **The mobile app is unaffected.** The official app (read at `2f3ff09`, 2026-11-03) never reads `IS_ENTERPRISE`. It shows its own SSO button only when the server address contains `app.chatwoot.com`, so on our host the portal deep link has always been the only SSO path.
 4. **Done 2026-11-06:** comvor-api lists only `/omniauth/comvor_saml/callback` (`internal/portal/samlidp/sp.go`); `ComvorSamlCallbackGuard`, `Comvor::PortalIdp.pinned?` and the phase-2 coexistence spec are gone. Deploy order does not matter: neither side uses the old path since phase 3.
