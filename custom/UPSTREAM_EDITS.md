@@ -19,7 +19,7 @@ Comvor's own behaviour lives in `custom/`, which is Chatwoot's own extension fol
 
 | File:line | What | Why | Merge rule |
 |---|---|---|---|
-| `config/application.rb:54-62` | A guarded `if custom_root.exist?` block, right after the enterprise initializer require. It adds `custom/lib` and `custom/app/**` to the eager-load paths, unshifts `custom/app/views`, and requires `custom/config/initializers/**/*.rb`. | This is what loads `custom/`. | Keep the block **after** the enterprise block. That order makes custom views win, and makes custom initializers run after enterprise's. Our `insert_before OmniAuth::Builder` relies on that order. If upstream moves the enterprise block, move this one with it. |
+| `config/application.rb:54-62` | A guarded `if custom_root.exist?` block, right after the enterprise initializer require. It adds `custom/lib` and `custom/app/**` to the eager-load paths, unshifts `custom/app/views`, and requires `custom/config/initializers/**/*.rb`. | This is what loads `custom/`. | Keep the block **after** the enterprise block. That order makes custom views win, and makes custom initializers run after enterprise's. If upstream moves the enterprise block, move this one with it. |
 | `lib/chatwoot_app.rb:38-39` | In `extensions`, the `custom?` branch reads `%w[enterprise custom].select { \|extension\| root.join(extension).exist? }`. Upstream's is a bare `%w[enterprise custom]`. | `each_extension_for` crashes (`false.const_defined?`) when a listed extension's namespace is undefined, which `Enterprise` is once the folder is deleted. | Keep it if upstream rewrites `extensions`. Drop it if upstream makes `const_get_maybe_false` safe for nil and false. |
 | `app/controllers/dashboard_controller.rb:115` | `DashboardController.prepend_mod_with('DashboardController')` | The class had no hook. `Custom::DashboardController#allowed_login_methods` adds `saml` when `Comvor::SamlSso.available?`. That replaces fork commit `c7ac1411ed`, which was reverted: the method is upstream's again. | Keep. Drop it if upstream adds its own hook. `allowed_login_methods` is private: if upstream renames it, rename the override with it. |
 | `app/controllers/api/v1/profiles_controller.rb:85` | `Api::V1::ProfilesController.prepend_mod_with('Api::V1::ProfilesController')` | The class had no hook. The prepended module refuses a `saml` user's password change. This replaces `c79b8f1808`'s hunk, which was reverted. | Keep. Drop it if upstream adds a hook. |
@@ -48,7 +48,7 @@ These lines are unchanged upstream code. If upstream removes or renames one, the
   - `config/routes.rb:89` (`resource :saml_settings`) is upstream's and is left alone. Ours answers first. In CE it names a missing controller, but nothing reaches it.
 - **Rate limits:** `custom/config/initializers/comvor_rack_attack.rb`. It relies on upstream's `Rack::Attack` setup in `config/initializers/rack_attack.rb`, including the loopback and `RACK_ATTACK_ALLOWED_IPS` safelist, which skips every throttle.
 - **Strings:** `custom/config/initializers/comvor_locales.rb` appends `custom/config/locales/**/*.yml` to the i18n load path, after `config/locales`. A key there overrides upstream's.
-- **OmniAuth:** `custom/config/initializers/comvor_saml.rb` (the `comvor_saml` strategy) and `comvor_saml_idp_pin.rb` (the IdP pin, plus `ComvorSamlCallbackGuard` in front of enterprise's `:saml` strategy).
+- **OmniAuth:** `custom/config/initializers/comvor_saml.rb` (the `comvor_saml` strategy) and `comvor_saml_idp_pin.rb` (the IdP pin on enterprise's settings model, where enterprise/ is present).
 
 ## 3. Comvor edits still in upstream files
 
@@ -162,13 +162,13 @@ Run each with rbenv initialised (`eval "$(rbenv init -)"`).
 
 ## 7. Phase-2 deploy prerequisites (enterprise still in the image)
 
-1. **Deploy comvor-api first,** with both return addresses (the dual-ACS change). Then deploy the fork. To roll back, revert the fork merge; comvor-api keeps accepting both addresses.
+1. **Deploy comvor-api first,** with both return addresses (the dual-ACS change). Then deploy the fork. To roll back, revert the fork merge; comvor-api kept accepting both addresses (historical: since 2026-11-06 it lists only `comvor_saml`'s).
 2. **Set `COMVOR_PORTAL_URL=https://app.comvor.com`** in `comvor-deploy/config/deploy.chatwoot.yml`. The `saml` reset pointer mail and an absolute sign-out `return_to` need it.
 3. **Check where comvor-api's `POST /internal/portal/agent_session` arrives from.** If it is loopback or an address in `RACK_ATTACK_ALLOWED_IPS`, upstream's safelist skips both Comvor throttles.
 
 ## 8. Phase 3 (`enterprise/` out of the image)
 
 1. **Before the deploy,** check Sidekiq (Super Admin, Sidekiq page) for queued, scheduled or retrying jobs from `enterprise/app/jobs`: the `Captain::`, `Sla::`, `Enterprise::`, `Migration::` and `Portal::ArticleIndexingJob` classes, `Messages::AudioTranscriptionJob`, `Internal::AccountAnalysisJob` and `Saml::UpdateAccountUsersProviderJob`. After the deploy they cannot load and will end up in the dead set.
-2. **The `.dockerignore` lines** ship with this phase. To roll back, drop them and redeploy.
+2. **The `.dockerignore` lines** ship with this phase. To roll back, drop them and redeploy. Since the cleanup below, a rollback brings enterprise's `/omniauth/saml/callback` back **without `ComvorSamlCallbackGuard`**. comvor-api no longer mints for that address, but the strategy trusts whatever `sso_url` and certificate each stored row holds, and the settings pin only checks writes. So a rollback is safe only while every `account_saml_settings` row names the portal. **Before rolling back,** run the read-only check: every row's `sso_url` and `idp_entity_id` are the portal's, `sp_entity_id` is `comvor-chatwoot-account-<account_id>`, and the certificate is the one `/portal/saml/metadata` publishes. Checked 2026-11-06: 7 of 7 rows pass, one certificate, equal to the published one.
 3. **The mobile app is unaffected.** The official app (read at `2f3ff09`, 2026-11-03) never reads `IS_ENTERPRISE`. It shows its own SSO button only when the server address contains `app.chatwoot.com`, so on our host the portal deep link has always been the only SSO path.
-4. **Afterwards,** drop the old return address from comvor-api (`internal/portal/samlidp/sp.go`) and remove `ComvorSamlCallbackGuard` with the rest of the old `:saml` path.
+4. **Done 2026-11-06:** comvor-api lists only `/omniauth/comvor_saml/callback` (`internal/portal/samlidp/sp.go`); `ComvorSamlCallbackGuard`, `Comvor::PortalIdp.pinned?` and the phase-2 coexistence spec are gone. Deploy order does not matter: neither side uses the old path since phase 3.
