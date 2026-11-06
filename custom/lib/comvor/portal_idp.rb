@@ -55,15 +55,6 @@ module Comvor::PortalIdp
     "comvor-chatwoot-account-#{account_id}"
   end
 
-  # Whether a stored settings row names the portal, read the way the SAML
-  # callback reads it. Raises MetadataError when the portal cannot be read.
-  def pinned?(settings)
-    settings.sso_url == sso_url &&
-      settings.idp_entity_id == entity_id &&
-      settings.sp_entity_id == sp_entity_id_for(settings.account_id) &&
-      saml_certificate_sha256(settings.certificate) == certificate_sha256
-  end
-
   # SHA-256 of the DER certificate the portal publishes first. Raises
   # MetadataError when the metadata cannot be read, so callers fail closed.
   def certificate_sha256
