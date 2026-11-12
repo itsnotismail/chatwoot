@@ -197,6 +197,29 @@ RSpec.describe Notification::PushNotificationService do
     end
   end
 
+  context 'when the relay is off and an official-app token is sent direct' do
+    before { with_firebase_config(true) }
+
+    around { |example| with_modified_env(ENABLE_PUSH_RELAY_SERVER: 'false') { example.run } }
+
+    it 'keeps it on SENDER_ID_MISMATCH, so turning the relay back on still reaches it' do
+      stub_request(:post, fcm_send_url).to_return(fcm_v1_error(code: 403, status: 'PERMISSION_DENIED', error_code: 'SENDER_ID_MISMATCH'))
+      official_subscription
+      perform
+
+      expect(fcm_send_to('official-token')).to have_been_made.once
+      expect(NotificationSubscription.exists?(official_subscription.id)).to be(true)
+    end
+
+    it 'removes it on UNREGISTERED' do
+      stub_request(:post, fcm_send_url).to_return(fcm_v1_error(code: 404, status: 'NOT_FOUND', error_code: 'UNREGISTERED'))
+      official_subscription
+      perform
+
+      expect(NotificationSubscription.exists?(official_subscription.id)).to be(false)
+    end
+  end
+
   describe 'FCM v1 errors on the direct path' do
     before { with_firebase_config(true) }
 

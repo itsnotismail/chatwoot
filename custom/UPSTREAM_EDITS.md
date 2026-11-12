@@ -153,6 +153,8 @@ Run each with rbenv initialised (`eval "$(rbenv init -)"`).
 - **`users.provider` is per user, not per account.** A member of two accounts becomes `saml` at their first SSO sign-in to either, and from then on signs in through the portal for both (upstream behaves the same). `Comvor::SamlProviderResetJob` only puts them back when no account they belong to has SSO configured.
 - **The settings pin hashes the first certificate the portal publishes** (`Comvor::PortalIdp.certificate_sha256`), while sign-in accepts any listed one. During a portal key rotation, a row provisioned with the second certificate is refused until the first is retired; sign-in is unaffected.
 
+- **Push differs from upstream once the Firebase config is set** (`Custom::Notification::PushNotificationService`, `custom/docs/push-dual-run.md`). Untagged FCM subscriptions keep going through the hub while the relay is on. A failed direct send is logged and reported, not raised, so Sidekiq does not retry it. A blank `FIREBASE_*` value counts as absent (upstream counts `''` as set). A subscription is removed on FCM v1 `UNREGISTERED`, or `SENDER_ID_MISMATCH` for a Comvor app subscription; upstream's legacy `results` check never removed anything on v1.
+
 ### Accepted losses once `enterprise/` is gone (phase 3)
 
 - Audit rows stop.

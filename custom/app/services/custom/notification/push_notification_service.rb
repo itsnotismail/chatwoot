@@ -25,7 +25,9 @@ module Custom::Notification::PushNotificationService
 
   # FCM v1 error codes that mean this sender can never deliver to the token.
   # https://firebase.google.com/docs/reference/fcm/rest/v1/ErrorCode
-  # Everything else (QUOTA_EXCEEDED, UNAVAILABLE, INTERNAL, INVALID_ARGUMENT,
+  # SENDER_ID_MISMATCH removes only a Comvor app subscription: an official-app
+  # token sent direct (relay off) always gets it, and deleting those would
+  # outlive a brief relay-off flip. Everything else (QUOTA_EXCEEDED, UNAVAILABLE, INTERNAL, INVALID_ARGUMENT,
   # THIRD_PARTY_AUTH_ERROR, a 401 from a bad service account, a 404 from a
   # wrong project id) keeps the subscription.
   DEAD_TOKEN_ERROR_CODES = %w[UNREGISTERED SENDER_ID_MISMATCH].freeze
@@ -66,8 +68,13 @@ module Custom::Notification::PushNotificationService
   # Upstream checks truthiness, and GlobalConfigService.load returns '' when a
   # Super Admin cleared the value while the env var is still set. '' would
   # count as configured and send with empty credentials.
+  # Read once per notification: every load can hit the DB, and one answer
+  # for the whole loop keeps the direct and hub arms exclusive.
   def firebase_credentials_present?
-    GlobalConfigService.load('FIREBASE_PROJECT_ID', nil).present? && GlobalConfigService.load('FIREBASE_CREDENTIALS', nil).present?
+    return @firebase_credentials_present if defined?(@firebase_credentials_present)
+
+    @firebase_credentials_present =
+      GlobalConfigService.load('FIREBASE_PROJECT_ID', nil).present? && GlobalConfigService.load('FIREBASE_CREDENTIALS', nil).present?
   end
 
   def comvor_app_subscription?(subscription)
@@ -86,7 +93,7 @@ module Custom::Notification::PushNotificationService
     return Rails.logger.info("FCM push sent to #{user.email} with title #{push_message[:title]}") if error.nil?
 
     error_code = comvor_fcm_v1_error_code(error)
-    if DEAD_TOKEN_ERROR_CODES.include?(error_code)
+    if comvor_dead_token?(subscription, error_code)
       Rails.logger.info("FCM v1 #{error_code}: removing subscription #{subscription.id}")
       subscription.destroy!
     else
@@ -94,6 +101,12 @@ module Custom::Notification::PushNotificationService
         "FCM v1 push failed for subscription #{subscription.id}: status #{response[:status_code]} #{error['status']} #{error_code}".squish
       )
     end
+  end
+
+  def comvor_dead_token?(subscription, error_code)
+    return false unless DEAD_TOKEN_ERROR_CODES.include?(error_code)
+
+    error_code == 'UNREGISTERED' || comvor_app_subscription?(subscription)
   end
 
   def comvor_fcm_v1_error(response)
