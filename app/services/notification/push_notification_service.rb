@@ -170,3 +170,6 @@ class Notification::PushNotificationService
     }
   end
 end
+
+# Comvor: dual-run push routing (custom/UPSTREAM_EDITS.md)
+Notification::PushNotificationService.prepend_mod_with('Notification::PushNotificationService')
