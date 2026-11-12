@@ -116,16 +116,17 @@ export const createMessageHandler = onEmbeddedSignupData => {
   };
 };
 
-// Comvor: Meta deprecated Embedded Signup v2/v3 on 2026-10-15 and serves a request with
-// no `version` as v4, so v4 is pinned here rather than left implicit. In v4 the products
-// come from the Login for Business configuration (config_id), session info is sent for
-// every flow, and `sessionInfoVersion` (a v2 input) no longer applies. featureType keeps
-// the coexistence option (keep the WhatsApp Business app on the phone) in the flow.
-// https://developers.facebook.com/docs/whatsapp/embedded-signup/versions
+// Comvor: Meta deprecated Embedded Signup v2/v3 on 2026-10-15. v4 is selected by sending
+// no `version`: Meta documents no "v4" value (only v5, v4-public-preview and older), and
+// serves a missing or invalid version as v4. In v4 the products come from the Login for
+// Business configuration (config_id), session info is sent for every flow, and
+// `sessionInfoVersion` (a v2 input) no longer applies. featureType keeps the coexistence
+// option (keep the WhatsApp Business app on the phone) in the flow. Moving to v5
+// (`version: 'v5'`, coexistence on by default, a different session object) needs a real
+// connect test first. https://developers.facebook.com/docs/whatsapp/embedded-signup/versions
 export const EMBEDDED_SIGNUP_EXTRAS = Object.freeze({
   setup: {},
   featureType: 'whatsapp_business_app_onboarding',
-  version: 'v4',
 });
 
 export const initWhatsAppEmbeddedSignup = configId => {

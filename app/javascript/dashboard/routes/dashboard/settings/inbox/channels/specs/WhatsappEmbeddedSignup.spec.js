@@ -72,13 +72,15 @@ describe('WhatsappEmbeddedSignup', () => {
     );
   });
 
-  it('marks a new-number FINISH as not coexistence, even when it arrives first', async () => {
-    postSignupEvent('FINISH', {
-      waba_id: 'waba-1',
-      business_id: 'biz-1',
-      phone_number_id: 'phone-1',
+  it('marks a new-number FINISH as not coexistence, even when it beats the auth code', async () => {
+    initWhatsAppEmbeddedSignup.mockImplementation(async () => {
+      postSignupEvent('FINISH', {
+        waba_id: 'waba-1',
+        business_id: 'biz-1',
+        phone_number_id: 'phone-1',
+      });
+      return 'auth-code';
     });
-    await flushPromises();
     await launch(wrapper);
 
     expect(dispatch).toHaveBeenCalledWith(
@@ -88,6 +90,45 @@ describe('WhatsappEmbeddedSignup', () => {
         phone_number_id: 'phone-1',
         is_coexistence: false,
       })
+    );
+  });
+
+  it('posts once, as coexistence, when a normal FINISH follows the coexistence one', async () => {
+    initWhatsAppEmbeddedSignup.mockImplementation(async () => {
+      postSignupEvent('FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING', {
+        waba_id: 'waba-1',
+      });
+      postSignupEvent('FINISH', { waba_id: 'waba-1', phone_number_id: 'p-1' });
+      return 'auth-code';
+    });
+    await launch(wrapper);
+    postSignupEvent('FINISH', { waba_id: 'waba-1', phone_number_id: 'p-1' });
+    await flushPromises();
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith(
+      'inboxes/createWhatsAppEmbeddedSignup',
+      expect.objectContaining({ is_coexistence: true })
+    );
+  });
+
+  it('forgets a previous attempt when the merchant launches again', async () => {
+    initWhatsAppEmbeddedSignup.mockImplementationOnce(async () => {
+      postSignupEvent('FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING', {
+        waba_id: 'old-waba',
+      });
+      throw new Error('Login cancelled');
+    });
+    await launch(wrapper);
+    expect(dispatch).not.toHaveBeenCalled();
+
+    await launch(wrapper);
+    postSignupEvent('FINISH', { waba_id: 'new-waba', phone_number_id: 'p-2' });
+    await flushPromises();
+
+    expect(dispatch).toHaveBeenCalledWith(
+      'inboxes/createWhatsAppEmbeddedSignup',
+      expect.objectContaining({ waba_id: 'new-waba', is_coexistence: false })
     );
   });
 

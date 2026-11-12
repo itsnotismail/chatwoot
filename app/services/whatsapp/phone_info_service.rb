@@ -23,15 +23,15 @@ class Whatsapp::PhoneInfoService
     response = @api_client.fetch_phone_numbers(@waba_id)
     phone_numbers = response['data']
 
+    raise "No phone numbers found for WABA #{@waba_id}" if phone_numbers.blank?
+
     phone_data = find_phone_data(phone_numbers)
-    raise "No phone numbers found for WABA #{@waba_id}" if phone_data.nil?
+    raise "No matching phone number found for WABA #{@waba_id}" if phone_data.nil?
 
     build_phone_info(phone_data)
   end
 
   def find_phone_data(phone_numbers)
-    return nil if phone_numbers.blank?
-
     if @phone_number_id.present?
       phone_numbers.find { |phone| phone['id'] == @phone_number_id } || phone_numbers.first
     elsif @expected_phone_number.present?

@@ -20,7 +20,7 @@ describe('initWhatsAppEmbeddedSignup', () => {
     delete window.FB;
   });
 
-  it('launches Embedded Signup v4 explicitly, with coexistence offered', async () => {
+  it('launches Embedded Signup v4 (no version, per Meta), with coexistence offered', async () => {
     const login = vi.fn(callback =>
       callback({ authResponse: { code: 'the-code' } })
     );
@@ -36,26 +36,27 @@ describe('initWhatsAppEmbeddedSignup', () => {
       response_type: 'code',
       override_default_response_type: true,
     });
+    // Exactly these keys: v4 has no documented `version` value (a missing one is
+    // served as v4), and sessionInfoVersion is a v2-only input.
     expect(options.extras).toEqual({
       setup: {},
       featureType: 'whatsapp_business_app_onboarding',
-      version: 'v4',
     });
-    // A v2-only input; v4 sends session info for every flow.
-    expect(options.extras).not.toHaveProperty('sessionInfoVersion');
   });
 
   it('hands the SDK a copy, so the shared extras stay untouched', async () => {
     window.FB = {
       login: vi.fn((callback, options) => {
-        options.extras.version = 'mutated';
+        options.extras.featureType = 'mutated';
         callback({ authResponse: { code: 'c' } });
       }),
     };
 
     await initWhatsAppEmbeddedSignup('config-123');
 
-    expect(EMBEDDED_SIGNUP_EXTRAS.version).toBe('v4');
+    expect(EMBEDDED_SIGNUP_EXTRAS.featureType).toBe(
+      'whatsapp_business_app_onboarding'
+    );
   });
 
   it('rejects when the popup is closed without a code', async () => {

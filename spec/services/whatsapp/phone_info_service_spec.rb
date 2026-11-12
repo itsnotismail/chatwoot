@@ -172,7 +172,7 @@ describe Whatsapp::PhoneInfoService do
     it 'raises when the channel number is not on the WABA' do
       expect do
         described_class.new(waba_id, nil, access_token, expected_phone_number: '+9603333333').perform
-      end.to raise_error(/No phone numbers found for WABA/)
+      end.to raise_error(/No matching phone number found for WABA/)
     end
   end
 end

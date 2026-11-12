@@ -132,6 +132,9 @@ const handleEmbeddedSignupData = async data => {
   const result = classifySignupEvent(data);
 
   if (result.type === SIGNUP_RESULT.FINISH) {
+    // Keep the first FINISH: a normal FINISH can follow the coexistence one, and the
+    // auth code is single-use, so a second completion must not post again.
+    if (businessData.value) return;
     const businessDataLocal = data.data;
     if (isValidBusinessData(businessDataLocal)) {
       isCoexistence.value = result.isCoexistence;
@@ -170,6 +173,8 @@ const handleEmbeddedSignupData = async data => {
 const handleSignupMessage = createMessageHandler(handleEmbeddedSignupData);
 
 const launchEmbeddedSignup = async () => {
+  businessData.value = null;
+  isCoexistence.value = false;
   try {
     isAuthenticating.value = true;
     processingMessage.value = t(
