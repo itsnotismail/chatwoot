@@ -14,6 +14,8 @@ import {
   initWhatsAppEmbeddedSignup,
   createMessageHandler,
   isValidBusinessData,
+  classifySignupEvent,
+  SIGNUP_RESULT,
 } from './whatsapp/utils';
 
 const store = useStore();
@@ -27,6 +29,7 @@ const processingMessage = ref('');
 const authCodeReceived = ref(false);
 const authCode = ref(null);
 const businessData = ref(null);
+const isCoexistence = ref(false);
 const isAuthenticating = ref(false);
 
 const benefits = computed(() => [
@@ -106,6 +109,7 @@ const completeSignupFlow = async businessDataParam => {
       business_id: businessDataParam.business_id,
       waba_id: businessDataParam.waba_id,
       phone_number_id: businessDataParam?.phone_number_id || '',
+      is_coexistence: isCoexistence.value,
     };
 
     const responseData = await store.dispatch(
@@ -125,13 +129,12 @@ const completeSignupFlow = async businessDataParam => {
 
 // Message handling
 const handleEmbeddedSignupData = async data => {
-  if (
-    data.event === 'FINISH' ||
-    data.event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'
-  ) {
-    const businessDataLocal = data.data;
+  const result = classifySignupEvent(data);
 
+  if (result.type === SIGNUP_RESULT.FINISH) {
+    const businessDataLocal = data.data;
     if (isValidBusinessData(businessDataLocal)) {
+      isCoexistence.value = result.isCoexistence;
       businessData.value = businessDataLocal;
       if (authCodeReceived.value && authCode.value) {
         await completeSignupFlow(businessDataLocal);
@@ -147,15 +150,19 @@ const handleEmbeddedSignupData = async data => {
         ),
       });
     }
-  } else if (data.event === 'CANCEL') {
+  } else if (result.type === SIGNUP_RESULT.UNSUPPORTED) {
+    handleSignupError({
+      error: t(
+        'INBOX_MGMT.ADD.WHATSAPP.EMBEDDED_SIGNUP.UNSUPPORTED_COMPLETION'
+      ),
+    });
+  } else if (result.type === SIGNUP_RESULT.CANCEL) {
     handleSignupCancellation();
-  } else if (data.event === 'error') {
+  } else if (result.type === SIGNUP_RESULT.ERROR) {
     handleSignupError({
       error:
-        data.error_message ||
+        result.errorMessage ||
         t('INBOX_MGMT.ADD.WHATSAPP.EMBEDDED_SIGNUP.SIGNUP_ERROR'),
-      error_id: data.error_id,
-      session_id: data.session_id,
     });
   }
 };

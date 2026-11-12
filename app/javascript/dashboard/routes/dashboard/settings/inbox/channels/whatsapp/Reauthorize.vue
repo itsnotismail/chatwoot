@@ -9,6 +9,8 @@ import {
   initWhatsAppEmbeddedSignup,
   createMessageHandler,
   isValidBusinessData,
+  classifySignupEvent,
+  SIGNUP_RESULT,
 } from './utils';
 
 const props = defineProps({
@@ -72,29 +74,41 @@ const handleEmbeddedSignupEvents = async (data, authCode) => {
     return;
   }
 
-  // Handle different event types
-  if (data.event === 'FINISH') {
+  // Comvor: v4 also finishes with FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING (coexistence),
+  // whose data carries only waba_id; the server matches the inbox's own number.
+  const result = classifySignupEvent(data);
+
+  if (result.type === SIGNUP_RESULT.FINISH) {
     const businessData = data.data;
 
-    if (isValidBusinessData(businessData) && businessData.phone_number_id) {
+    if (
+      isValidBusinessData(businessData) &&
+      (businessData.phone_number_id || result.isCoexistence)
+    ) {
       await reauthorizeWhatsApp({
         code: authCode,
         business_id: businessData.business_id,
         waba_id: businessData.waba_id,
         phone_number_id: businessData.phone_number_id,
+        is_coexistence: result.isCoexistence,
       });
     } else {
       useAlert(
         t('INBOX_MGMT.ADD.WHATSAPP.EMBEDDED_SIGNUP.INVALID_BUSINESS_DATA')
       );
     }
-  } else if (data.event === 'CANCEL') {
-    isRequestingAuthorization.value = false;
-    useAlert(t('INBOX_MGMT.ADD.WHATSAPP.EMBEDDED_SIGNUP.CANCELLED'));
-  } else if (data.event === 'error') {
+  } else if (result.type === SIGNUP_RESULT.UNSUPPORTED) {
     isRequestingAuthorization.value = false;
     useAlert(
-      data.error_message ||
+      t('INBOX_MGMT.ADD.WHATSAPP.EMBEDDED_SIGNUP.UNSUPPORTED_COMPLETION')
+    );
+  } else if (result.type === SIGNUP_RESULT.CANCEL) {
+    isRequestingAuthorization.value = false;
+    useAlert(t('INBOX_MGMT.ADD.WHATSAPP.EMBEDDED_SIGNUP.CANCELLED'));
+  } else if (result.type === SIGNUP_RESULT.ERROR) {
+    isRequestingAuthorization.value = false;
+    useAlert(
+      result.errorMessage ||
         t('INBOX_MGMT.ADD.WHATSAPP.EMBEDDED_SIGNUP.SIGNUP_ERROR')
     );
   }
