@@ -33,7 +33,7 @@ describe Whatsapp::EmbeddedSignupService do
 
       phone_service = instance_double(Whatsapp::PhoneInfoService)
       allow(Whatsapp::PhoneInfoService).to receive(:new)
-        .with(params[:waba_id], params[:phone_number_id], access_token).and_return(phone_service)
+        .with(params[:waba_id], params[:phone_number_id], access_token, expected_phone_number: anything).and_return(phone_service)
       allow(phone_service).to receive(:perform).and_return(phone_info)
 
       validation_service = instance_double(Whatsapp::TokenValidationService)
@@ -109,10 +109,35 @@ describe Whatsapp::EmbeddedSignupService do
       end
     end
 
+    # Comvor: Embedded Signup v4 coexistence (FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING) sends only waba_id.
+    context 'when the signup is a coexistence onboarding' do
+      let(:coexistence_service) do
+        described_class.new(account: account, params: params.except(:business_id).merge(is_coexistence: 'true'))
+      end
+
+      it 'passes the coexistence signal to webhook setup and skips the immediate health check' do
+        coexistence_service.perform
+
+        expect(channel).to have_received(:setup_webhooks).with(is_coexistence: true)
+        expect(Whatsapp::HealthService).not_to have_received(:new)
+      end
+    end
+
+    it 'tells webhook setup the signup is not coexistence when the frontend says so' do
+      described_class.new(account: account, params: params.merge(is_coexistence: false)).perform
+
+      expect(channel).to have_received(:setup_webhooks).with(is_coexistence: false)
+    end
+
     context 'when parameters are invalid' do
       it 'raises ArgumentError for missing parameters' do
-        invalid_service = described_class.new(account: account, params: { code: '', business_id: '', waba_id: '' })
-        expect { invalid_service.perform }.to raise_error(ArgumentError, /Required parameters are missing/)
+        invalid_service = described_class.new(account: account, params: { code: '', waba_id: '' })
+        expect { invalid_service.perform }.to raise_error(ArgumentError, 'Required parameters are missing: code, waba_id')
+      end
+
+      it 'does not require business_id' do
+        coexistence_service = described_class.new(account: account, params: params.except(:business_id))
+        expect { coexistence_service.perform }.not_to raise_error
       end
     end
 
@@ -163,7 +188,7 @@ describe Whatsapp::EmbeddedSignupService do
           account: account,
           inbox_id: inbox_id,
           phone_number_id: params[:phone_number_id],
-          business_id: params[:business_id]
+          waba_id: params[:waba_id]
         ).and_return(reauth_service)
         allow(reauth_service).to receive(:perform).with(access_token, phone_info).and_return(channel)
 
@@ -217,7 +242,7 @@ describe Whatsapp::EmbeddedSignupService do
             account: account,
             inbox_id: inbox.id,
             phone_number_id: params[:phone_number_id],
-            business_id: params[:business_id]
+            waba_id: params[:waba_id]
           ).and_return(reauth_service)
 
           allow(reauth_service).to receive(:perform) do

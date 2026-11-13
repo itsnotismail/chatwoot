@@ -144,4 +144,35 @@ describe Whatsapp::PhoneInfoService do
       end
     end
   end
+
+  # Comvor: coexistence completions can omit phone_number_id (ported from upstream #15462).
+  describe 'without a phone_number_id' do
+    let(:phone_number_id) { nil }
+    let(:numbers) do
+      [
+        { 'id' => 'first_id', 'display_phone_number' => '+960 111-1111', 'verified_name' => 'One', 'code_verification_status' => 'VERIFIED' },
+        { 'id' => 'second_id', 'display_phone_number' => '+960 222-2222', 'verified_name' => 'Two', 'code_verification_status' => 'VERIFIED' }
+      ]
+    end
+
+    before do
+      allow(api_client).to receive(:fetch_phone_numbers).with(waba_id).and_return({ 'data' => numbers })
+    end
+
+    it 'refuses to guess on a WABA with several numbers' do
+      expect { service.perform }.to raise_error(/Multiple phone numbers found for WABA/)
+    end
+
+    it 'matches the number of the channel being reauthorized' do
+      result = described_class.new(waba_id, nil, access_token, expected_phone_number: '+9602222222').perform
+
+      expect(result[:phone_number_id]).to eq('second_id')
+    end
+
+    it 'raises when the channel number is not on the WABA' do
+      expect do
+        described_class.new(waba_id, nil, access_token, expected_phone_number: '+9603333333').perform
+      end.to raise_error(/No matching phone number found for WABA/)
+    end
+  end
 end

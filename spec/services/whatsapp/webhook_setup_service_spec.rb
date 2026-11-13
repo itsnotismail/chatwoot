@@ -325,4 +325,50 @@ describe Whatsapp::WebhookSetupService do
       end
     end
   end
+
+  # Comvor: coexistence (WhatsApp Business app + Cloud API) numbers are already registered.
+  # Meta's coexistence guide says to skip /register for them. Ported from upstream #15462.
+  describe 'coexistence registration skip' do
+    before do
+      allow(api_client).to receive(:phone_number_verified?).and_return(false)
+      allow(api_client).to receive(:register_phone_number)
+      allow(api_client).to receive(:subscribe_waba_webhook).and_return({ 'success' => true })
+    end
+
+    it 'does not register or read health when the frontend reports a coexistence signup' do
+      described_class.new(channel, waba_id, access_token, is_coexistence: true).perform
+
+      expect(api_client).not_to have_received(:register_phone_number)
+      expect(health_service).not_to have_received(:fetch_health_status)
+      expect(api_client).to have_received(:subscribe_waba_webhook)
+    end
+
+    it 'falls back to is_on_biz_app when the caller passes no signal' do
+      allow(health_service).to receive(:fetch_health_status).and_return({ is_on_biz_app: true, platform_type: 'CLOUD_API' })
+
+      described_class.new(channel, waba_id, access_token).perform
+
+      expect(api_client).not_to have_received(:register_phone_number)
+      expect(api_client).to have_received(:subscribe_waba_webhook)
+    end
+
+    it 'ignores is_on_biz_app when the frontend explicitly ruled coexistence out' do
+      allow(health_service).to receive(:fetch_health_status).and_return({ is_on_biz_app: true, platform_type: 'CLOUD_API' })
+      allow(channel).to receive(:save!)
+
+      described_class.new(channel, waba_id, access_token, is_coexistence: false).perform
+
+      expect(api_client).to have_received(:register_phone_number)
+    end
+
+    it 'reads health once for the fallback and the pending-state check' do
+      allow(api_client).to receive(:phone_number_verified?).and_return(true)
+      allow(health_service).to receive(:fetch_health_status).and_return({ is_on_biz_app: false, platform_type: 'CLOUD_API' })
+
+      described_class.new(channel, waba_id, access_token).perform
+
+      expect(health_service).to have_received(:fetch_health_status).once
+      expect(api_client).not_to have_received(:register_phone_number)
+    end
+  end
 end
