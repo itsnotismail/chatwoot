@@ -27,7 +27,7 @@ module Custom::DeviseOverrides::OmniauthCallbacksController
     session[COMVOR_SAML_SESSION_KEY] = Comvor::SamlSignInHandoff.store(comvor_saml_sign_in(auth))
     redirect_to "/auth/#{COMVOR_SAML}/callback", status: :see_other
   rescue Comvor::SamlSignInHandoff::Unavailable
-    comvor_saml_refuse(mobile: request.params['RelayState'] == 'mobile')
+    comvor_saml_refuse(**comvor_saml_mobile(request.params['RelayState']))
   end
 
   def omniauth_success
@@ -35,7 +35,9 @@ module Custom::DeviseOverrides::OmniauthCallbacksController
 
     sign_in = Comvor::SamlSignInHandoff.claim(session.delete(COMVOR_SAML_SESSION_KEY))
     return comvor_saml_refuse if sign_in.nil?
-    return comvor_saml_refuse(mobile: sign_in['mobile']) unless Comvor::SamlSso.enabled_for?(Account.find_by(id: sign_in['account_id']))
+
+    @comvor_mobile_app = sign_in['app']
+    return comvor_saml_refuse(mobile: sign_in['mobile']) unless comvor_saml_still_enabled?(sign_in)
 
     @resource = Comvor::SamlUserBuilder.new(email: sign_in['email'], account_id: sign_in['account_id'], name: sign_in['name'],
                                             first_name: sign_in['first_name'], groups: sign_in['groups']).perform
@@ -49,7 +51,7 @@ module Custom::DeviseOverrides::OmniauthCallbacksController
   def omniauth_failure
     return super unless params[:strategy] == COMVOR_SAML
 
-    comvor_saml_refuse(mobile: params[:RelayState] == 'mobile')
+    comvor_saml_refuse(**comvor_saml_mobile(params[:RelayState]))
   end
 
   private
@@ -60,13 +62,15 @@ module Custom::DeviseOverrides::OmniauthCallbacksController
   # they did not attribute to a user gesture, so a bare redirect to a custom
   # scheme is silently dropped and the user is left on a blank page; the tap
   # supplies the gesture. The page carries a one-time sso_auth_token, so it
-  # must not be cached.
+  # must not be cached. The deep link opens the app the sign-in started from
+  # (@comvor_mobile_app, set only by the comvor_saml path; nil is the default
+  # app, so enterprise's saml keeps today's link).
   def sign_in_user_on_mobile
     needs_password_reset = oauth_user_needs_password_reset?
     @resource.skip_confirmation! if confirmable_enabled?
     set_random_password_if_oauth_user if needs_password_reset
 
-    @deep_link = @resource.generate_mobile_sso_deep_link
+    @deep_link = @resource.generate_mobile_sso_deep_link(app: @comvor_mobile_app)
     response.headers['Cache-Control'] = 'no-store'
     render 'comvor/mobile_handoff', layout: false
   end
@@ -75,13 +79,25 @@ module Custom::DeviseOverrides::OmniauthCallbacksController
     {
       'email' => auth.uid, 'name' => auth.info&.name, 'first_name' => auth.info&.first_name,
       'account_id' => auth.extra.account_id, 'groups' => comvor_saml_groups(auth.extra.raw_info),
-      'mobile' => request.params['RelayState'] == 'mobile'
+      **comvor_saml_mobile(request.params['RelayState']).stringify_keys
     }
   end
 
-  def comvor_saml_refuse(mobile: false)
+  # SSO may have been switched off since the assertion was validated.
+  def comvor_saml_still_enabled?(sign_in)
+    Comvor::SamlSso.enabled_for?(Account.find_by(id: sign_in['account_id']))
+  end
+
+  # RelayState 'mobile' is the default mobile app, 'mobile_comvor' Comvor
+  # Agent (Comvor::MobileApp); anything else is the web.
+  def comvor_saml_mobile(relay_state)
+    { mobile: Comvor::MobileApp.mobile_relay_state?(relay_state), app: Comvor::MobileApp.app_for_relay_state(relay_state) }
+  end
+
+  # app defaults to the app a claimed sign-in started from (omniauth_success).
+  def comvor_saml_refuse(mobile: false, app: @comvor_mobile_app)
     url = if mobile
-            "#{GlobalConfigService.load('MOBILE_DEEP_LINK_BASE', 'chatwootapp')}://auth/saml?error=#{COMVOR_SAML_FAILURE}"
+            Comvor::MobileApp.failure_link(app, COMVOR_SAML_FAILURE)
           else
             login_page_url(error: COMVOR_SAML_FAILURE)
           end

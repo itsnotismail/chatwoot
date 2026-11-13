@@ -4,12 +4,14 @@
 # one-time mobile sign-in link for a member of an account, creating the user
 # the way SAML sign-in would for a first-time agent. Answers
 # { deep_link: 'chatwootapp://auth/saml?...' }, a live credential that is
-# never logged. Authenticated by PORTAL_FORK_SHARED_SECRET, not a user
+# never logged. An optional app ('comvor' or 'chatwoot') picks the mobile
+# app the link opens (Comvor::MobileApp); without it the link is the one
+# the endpoint has always given. Authenticated by PORTAL_FORK_SHARED_SECRET, not a user
 # session, so it is outside the API's authenticate_user!.
 #
 # The answers are the ones the endpoint has always given, in this order:
 # 404 while no secret is set (the endpoint is dark), 401 for a missing or
-# wrong secret, 400 for a blank email, 404 for an account id that is not a
+# wrong secret, 400 for a blank email or an app it does not know, 404 for an account id that is not a
 # plain positive number or names no account, 403 when SAML sign-in is off
 # for the installation or the account (the deep link is no more capable than
 # web SSO), 403 for an email that belongs to a user outside the account, 422
@@ -20,13 +22,14 @@ class Comvor::PortalAgentSessionsController < ActionController::API
 
   before_action :require_portal_secret
   before_action :fetch_email
+  before_action :fetch_app
   before_action :fetch_account
   before_action :require_saml
 
   def create
     user = Comvor::SamlUserBuilder.new(email: @email, account_id: @account.id, name: name_param).perform
     response.headers['Cache-Control'] = 'no-store'
-    render json: { deep_link: user.generate_mobile_sso_deep_link }
+    render json: { deep_link: user.generate_mobile_sso_deep_link(app: @app) }
   rescue Comvor::SamlUserBuilder::AuthenticationFailed
     render json: { error: 'user not authorized for account' }, status: :forbidden
   rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotUnique
@@ -44,6 +47,11 @@ class Comvor::PortalAgentSessionsController < ActionController::API
   def fetch_email
     @email = params[:email].is_a?(String) ? params[:email].strip.downcase : ''
     render json: { error: 'email required' }, status: :bad_request if @email.blank?
+  end
+
+  def fetch_app
+    @app = params[:app]
+    render json: { error: 'unknown app' }, status: :bad_request unless @app.is_a?(String) ? Comvor::MobileApp.known?(@app) : @app.nil?
   end
 
   # Only an integer or a string of digits is an id; anything else, such as a
