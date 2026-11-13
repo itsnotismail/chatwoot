@@ -23,6 +23,10 @@ RSpec.describe User do
       expect(user.generate_mobile_sso_deep_link(app: 'chatwoot')).to start_with('chatwootapp://auth/saml?')
     end
 
+    it 'refuses an app it does not know rather than give the default app\'s link' do
+      expect { user.generate_mobile_sso_deep_link(app: 'evilapp') }.to raise_error(ArgumentError)
+    end
+
     it 'keeps the configured default when no app is named' do
       allow(GlobalConfigService).to receive(:load).and_call_original
       allow(GlobalConfigService).to receive(:load).with('MOBILE_DEEP_LINK_BASE', 'chatwootapp').and_return('comvor')

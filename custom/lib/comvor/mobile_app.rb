@@ -23,8 +23,12 @@ module Comvor::MobileApp
     app.nil? || SCHEMES.key?(app)
   end
 
+  # nil is the default app; a name outside SCHEMES is a caller's bug, never
+  # quietly the default app's link.
   def scheme(app = nil)
-    SCHEMES.fetch(app) { GlobalConfigService.load('MOBILE_DEEP_LINK_BASE', 'chatwootapp') }
+    return GlobalConfigService.load('MOBILE_DEEP_LINK_BASE', 'chatwootapp') if app.nil?
+
+    SCHEMES.fetch(app) { raise ArgumentError, "unknown mobile app: #{app.inspect}" }
   end
 
   def mobile_relay_state?(relay_state)

@@ -11,7 +11,7 @@ Both apps take the one-time SSO hand-off until the official Chatwoot app is reti
 | same with `app: "chatwoot"` | `chatwootapp://` (official app), whatever `MOBILE_DEEP_LINK_BASE` says |
 | same with any other `app` | 400 `unknown app` |
 | SSO page `/app/login/sso?target=mobile` (RelayState `mobile`) | default scheme |
-| SSO page `/app/login/sso?target=mobile_comvor` (RelayState `mobile_comvor`) | `comvor://`, success and refusal alike |
+| SSO page `/app/login/sso?target=mobile_comvor` (RelayState `mobile_comvor`) | `comvor://`, success and every refusal (controller and strategy failures) |
 
 The link is otherwise unchanged: the email in it is still encoded twice (`a%2540x.com`), the shape proven on a real device. Do not "fix" it.
 

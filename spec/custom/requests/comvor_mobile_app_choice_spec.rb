@@ -140,6 +140,27 @@ RSpec.describe 'Choosing the mobile app for the SSO hand-off', type: :request do
       expect(member.valid_sso_auth_token?(Rack::Utils.parse_query(URI.parse(href).query)['sso_auth_token'])).to be(true)
     end
 
+    it 'sends a strategy failure (an assertion not signed by the portal) back to Comvor Agent' do
+      forged_keys = ComvorSamlHelpers.key_and_certificate
+      saml_response = ComvorSamlHelpers.saml_response(key: forged_keys.first, cert: forged_keys.last, account_id: account.id,
+                                                      email: 'agent@example.com')
+      post "/omniauth/comvor_saml/callback?account_id=#{account.id}", params: { SAMLResponse: saml_response, RelayState: 'mobile_comvor' }
+
+      expect(response.location).to end_with('&strategy=comvor_saml&RelayState=mobile_comvor')
+      follow_redirect!
+      expect(response.location).to eq('comvor://auth/saml?error=saml-authentication-failed')
+    end
+
+    it 'sends a failure because SSO was switched off back to Comvor Agent' do
+      allow(GlobalConfigService).to receive(:load).and_call_original
+      allow(GlobalConfigService).to receive(:load).with('ENABLE_SAML_SSO_LOGIN', 'true').and_return('false')
+
+      portal_post
+      follow_redirect!
+
+      expect(response.location).to eq('comvor://auth/saml?error=saml-authentication-failed')
+    end
+
     it 'sends a refused user back to Comvor Agent' do
       create(:user, email: 'agent@example.com', account: create(:account), provider: 'email')
 
