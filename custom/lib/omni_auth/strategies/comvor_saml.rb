@@ -76,7 +76,8 @@ class OmniAuth::Strategies::ComvorSaml < OmniAuth::Strategies::SAML
     env['omniauth.error.strategy'] = self
     log :error, "Authentication failure! #{message_key}: #{exception&.class}, #{exception&.message}"
 
-    mobile = request.params['RelayState'] == 'mobile' ? '&RelayState=mobile' : ''
+    relay_state = request.params['RelayState']
+    mobile = Comvor::MobileApp.mobile_relay_state?(relay_state) ? "&RelayState=#{relay_state}" : ''
     redirect("#{script_name}#{path_prefix}/failure?message=#{Rack::Utils.escape(message_key)}&strategy=#{name}#{mobile}")
   end
 

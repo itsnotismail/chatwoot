@@ -17,7 +17,7 @@ class Comvor::SamlLoginsController < ActionController::API
     account = sso_account_for(email)
     return redirect_to failure_url, allow_other_host: true if account.nil?
 
-    redirect_to "/auth/comvor_saml?account_id=#{account.id}&RelayState=#{mobile? ? 'mobile' : 'web'}", status: :temporary_redirect
+    redirect_to "/auth/comvor_saml?account_id=#{account.id}&RelayState=#{mobile? ? params[:target] : 'web'}", status: :temporary_redirect
   end
 
   private
@@ -29,12 +29,14 @@ class Comvor::SamlLoginsController < ActionController::API
     user.accounts.where(id: Comvor::SamlSetting.select(:account_id)).order(:id).find { |account| Comvor::SamlSso.enabled_for?(account) }
   end
 
+  # 'mobile' (the default app) or 'mobile_comvor' (Comvor Agent); it travels
+  # on as the RelayState. See Comvor::MobileApp.
   def mobile?
-    params[:target] == 'mobile'
+    Comvor::MobileApp.mobile_relay_state?(params[:target])
   end
 
   def failure_url
-    return "#{GlobalConfigService.load('MOBILE_DEEP_LINK_BASE', 'chatwootapp')}://auth/saml?error=#{FAILURE}" if mobile?
+    return Comvor::MobileApp.failure_link(Comvor::MobileApp.app_for_relay_state(params[:target]), FAILURE) if mobile?
 
     "#{ENV.fetch('FRONTEND_URL', nil)}/app/login/sso?error=#{FAILURE}"
   end

@@ -11,11 +11,14 @@ module Custom::Concerns::User
   # escapes that. This is the exact shape verified end-to-end on a real Android
   # device (2026-07-25) — the app decodes twice. Changing it requires
   # re-verifying on a physical device.
-  def generate_mobile_sso_deep_link
+  #
+  # app picks the app the link opens (Comvor::MobileApp): nil is the default
+  # scheme, MOBILE_DEEP_LINK_BASE; 'comvor' is Comvor Agent, 'chatwoot' the
+  # official app. Only the scheme changes; the rest of the link is identical.
+  def generate_mobile_sso_deep_link(app: nil)
     encoded_email = ERB::Util.url_encode(email)
     params = { email: encoded_email, sso_auth_token: generate_sso_auth_token }.to_query
-    mobile_deep_link_base = GlobalConfigService.load('MOBILE_DEEP_LINK_BASE', 'chatwootapp')
 
-    "#{mobile_deep_link_base}://auth/saml?#{params}"
+    "#{Comvor::MobileApp.scheme(app)}://auth/saml?#{params}"
   end
 end
